@@ -13,7 +13,7 @@ type PageType =
   | "dashboard";
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<PageType>("dashboard");
+  const [currentPage, setCurrentPage] = useState<PageType>("landing");
 
   return (
     <>
