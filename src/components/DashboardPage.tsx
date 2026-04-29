@@ -126,32 +126,6 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   };
 
-  const getNotificationBgColor = (type: string) => {
-    switch (type) {
-      case "warning":
-        return "bg-yellow-50 border-yellow-200";
-      case "success":
-        return "bg-green-50 border-green-200";
-      case "info":
-        return "bg-blue-50 border-blue-200";
-      default:
-        return "bg-gray-50 border-gray-200";
-    }
-  };
-
-  const getNotificationIconColor = (type: string) => {
-    switch (type) {
-      case "warning":
-        return "text-yellow-600";
-      case "success":
-        return "text-green-600";
-      case "info":
-        return "text-blue-600";
-      default:
-        return "text-gray-600";
-    }
-  };
-
   const handleDispatchRequest = () => {
     if (selectedLocation && dispatchReason) {
       alert(
