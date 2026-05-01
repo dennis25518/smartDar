@@ -4,6 +4,8 @@
 
 Transform waste and sanitation management in Ilala District Council with real-time monitoring, instant alerts, and data-driven insights aligned with UN Sustainable Development Goal 6: Clean Water & Sanitation.
 
+<!-- Build: 2026-05-01 -->
+
 ![smartDar](https://img.shields.io/badge/UN%20SDG-Goal%206-brightgreen) ![React](https://img.shields.io/badge/React-18.2.0-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-5.3.3-blue) ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-3.3.5-06B6D4)
 
 ## 🌍 About smartDar
