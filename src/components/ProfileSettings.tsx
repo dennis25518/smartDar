@@ -1,13 +1,7 @@
 import { useState, useRef } from "react";
 import { useUserProfile } from "../hooks/useUserProfile";
 
-interface ProfileSettingsProps {
-  onBackToDashboard?: () => void;
-}
-
-export default function ProfileSettings({
-  onBackToDashboard,
-}: ProfileSettingsProps) {
+export default function ProfileSettings() {
   const { profile, loading, error, updateProfile, uploadAvatar } =
     useUserProfile();
   const [isEditing, setIsEditing] = useState(false);

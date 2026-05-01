@@ -28,7 +28,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const { sensors, latestReadings, alerts, loading, error } = useSensorData();
 
   // Fetch user profile
-  const { profile, loading: profileLoading } = useUserProfile();
+  const { profile } = useUserProfile();
 
   // Build current user from profile
   const currentUser = {
