@@ -4,11 +4,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type",
 };
 
 serve(async (req) => {
-  // Handle CORS
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -21,7 +21,7 @@ serve(async (req) => {
   }
 
   try {
-    // Initialize Supabase client
+    // Initialize Supabase client with service role (no auth needed for IoT)
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -29,11 +29,17 @@ serve(async (req) => {
       throw new Error("Missing Supabase configuration");
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        persistSession: false,
+      },
+    });
 
     // Parse request body
     const body = await req.json();
     const { device_id, sensors: sensorData } = body;
+
+    console.log(`Received data from device: ${device_id}`);
 
     if (!device_id || !sensorData || !Array.isArray(sensorData)) {
       return new Response(JSON.stringify({ error: "Invalid payload format" }), {
@@ -51,7 +57,7 @@ serve(async (req) => {
 
     if (sensorError || !sensorRecord) {
       console.error("Sensor not found:", device_id);
-      return new Response(JSON.stringify({ error: "Device not registered" }), {
+      return new Response(JSON.stringify({ error: "Device not registered", device_id }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -75,6 +81,8 @@ serve(async (req) => {
       console.error("Insert error:", insertError);
       throw insertError;
     }
+
+    console.log(`Successfully inserted ${readings.length} readings for device ${device_id}`);
 
     // Check for threshold breaches and create alerts
     for (const reading of sensorData) {
