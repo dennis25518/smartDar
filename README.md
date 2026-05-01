@@ -1,4 +1,4 @@
-# smartDar 💧
+-# smartDar 💧
 
 **Intelligent IoT-Powered Sanitation Management Platform**
 
@@ -11,9 +11,11 @@ Transform waste and sanitation management in Ilala District Council with real-ti
 smartDar is an innovative IoT-based platform designed to revolutionize waste collection and septic tank management in Ilala District Council. By leveraging ultrasonic sensors, Wi-Fi connectivity, and cloud-based monitoring, smartDar enables efficient, real-time tracking of sanitation infrastructure.
 
 ### 🎯 Mission
+
 To provide Ilala District Council with cutting-edge IoT technology that enables real-time monitoring of waste and sanitation infrastructure, reducing environmental pollution, improving public health outcomes, and achieving sustainable urban development.
 
 ### 📊 Key Metrics
+
 - **1000+** Households Served
 - **50K** Tons Waste Managed
 - **99%** Satisfaction Rate
@@ -21,6 +23,7 @@ To provide Ilala District Council with cutting-edge IoT technology that enables 
 ## ✨ Features
 
 ### 🏠 Landing Page
+
 - Professional hero section with call-to-action
 - Comprehensive features showcase
 - About section detailing mission and challenges
@@ -31,6 +34,7 @@ To provide Ilala District Council with cutting-edge IoT technology that enables 
 - Visible hero images on all screen sizes
 
 ### 🔐 Authentication System
+
 - **Login Page**: Secure email/password authentication
 - **Register Page**: New user account creation with validation
 - **Forgot Password**: Password recovery flow with email verification
@@ -39,6 +43,7 @@ To provide Ilala District Council with cutting-edge IoT technology that enables 
 - Responsive layout for mobile and desktop
 
 ### 📊 User Dashboard
+
 - **5-Tab Interface**:
   - **Overview**: Real-time waste level statistics and alerts
   - **Notifications**: Color-coded alerts and system updates
@@ -46,7 +51,7 @@ To provide Ilala District Council with cutting-edge IoT technology that enables 
   - **Profile**: User account information and verification status
   - **Support**: Help center with contact information and ticket submission
 
-- **Desktop Sidebar**: 
+- **Desktop Sidebar**:
   - Collapsible navigation with expandable/compact modes
   - Tab icons with unread notification badges
   - Smooth animations and transitions
@@ -64,6 +69,7 @@ To provide Ilala District Council with cutting-edge IoT technology that enables 
   - Timestamped updates
 
 ### 📱 Mobile Responsiveness
+
 - Mobile-first design approach
 - Hamburger menu navigation (< 1024px)
 - Responsive typography and spacing
@@ -72,6 +78,7 @@ To provide Ilala District Council with cutting-edge IoT technology that enables 
 - Visible content on small screens
 
 ### 🎨 Design System
+
 - **Color Scheme**: Green gradient theme (green-500/600/700, emerald-600/700, teal-600)
 - **Typography**: Professional and readable across all devices
 - **Spacing**: Consistent padding and margins following Tailwind conventions
@@ -81,16 +88,19 @@ To provide Ilala District Council with cutting-edge IoT technology that enables 
 ## 🛠 Tech Stack
 
 ### Frontend
+
 - **React 18.2.0**: Component-based UI framework
 - **TypeScript 5.3.3**: Type-safe development
 - **Tailwind CSS 3.3.5**: Utility-first CSS styling
 - **Vite 5.0.8**: Lightning-fast build tool and dev server
 
 ### Development Tools
+
 - **PostCSS 8.4.31**: CSS processing with autoprefixer
 - **npm**: Package manager
 
 ### Architecture
+
 - Component-based structure
 - React Hooks for state management
 - Manual page routing with callback-based navigation
@@ -135,24 +145,28 @@ smartDar/
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 16+ 
+
+- Node.js 16+
 - npm or yarn
 - Git
 
 ### Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/dennis25518/smartDar.git
    cd smartDar
    ```
 
 2. Install dependencies:
+
    ```bash
    npm install
    ```
 
 3. Start the development server:
+
    ```bash
    npm run dev
    ```
@@ -173,29 +187,34 @@ Production-ready files will be generated in the `dist` folder.
 ## 📋 Pages Overview
 
 ### 1. Landing Page
+
 - **Route**: `/` (default)
 - **Features**: Hero section, features showcase, services, impact metrics, CTA
 - **Responsive**: Hamburger menu on mobile, full nav on desktop
 - **Call-to-Action**: "Get Started" button redirects to login
 
 ### 2. Login Page
+
 - **Route**: Triggered from landing page or after logout
 - **Fields**: Email, Password
 - **Features**: Password show/hide toggle, forgot password link, sign-up link
 - **Validation**: Email format, password requirements
 
 ### 3. Register Page
+
 - **Route**: "Create Account" link from login
 - **Fields**: First Name, Last Name, Email, Password, Confirm Password, Terms checkbox
 - **Features**: Form validation, error messages, password show/hide
 - **Submission**: Account creation with validation
 
 ### 4. Forgot Password Page
+
 - **Route**: "Forgot password?" link from login
 - **Flow**: Two-state interface (request email → success confirmation)
 - **Features**: Email input, send reset link button, resend option
 
 ### 5. Dashboard Page
+
 - **Route**: After successful login
 - **Tabs**:
   - **Overview**: 3 stat cards (Active Devices: 2, Avg Fill Level: 80%, Critical Alerts: 1), Real-Time Waste Levels section
@@ -207,16 +226,19 @@ Production-ready files will be generated in the `dist` folder.
 ## 🎨 Color Theme
 
 ### Primary Green Gradient
+
 ```css
 from-green-600 via-emerald-600 to-teal-600
 ```
 
 ### Status Colors
+
 - **Optimal**: Green (`bg-green-100`, `text-green-600`)
 - **Warning**: Yellow (`bg-yellow-100`, `text-yellow-600`)
 - **Critical**: Red (`bg-red-100`, `text-red-600`)
 
 ### UI Elements
+
 - Background: `bg-gray-50`
 - Cards: `bg-white` with `shadow-md`
 - Text: `text-gray-900` (dark) to `text-gray-600` (light)
@@ -224,6 +246,7 @@ from-green-600 via-emerald-600 to-teal-600
 ## 📱 Responsive Breakpoints
 
 Using Tailwind CSS breakpoints:
+
 - **Mobile (< 640px)**: `sm` prefix not applied
 - **Small (640px - 767px)**: `sm:` prefix
 - **Medium (768px - 1023px)**: `md:` prefix
@@ -254,6 +277,7 @@ Dashboard
 ## 🎯 State Management
 
 Currently using React Hooks (`useState`) for:
+
 - Current page state
 - Active dashboard tab
 - Sidebar toggle state
@@ -264,6 +288,7 @@ Currently using React Hooks (`useState`) for:
 ## 📝 Mock Data
 
 The dashboard includes sample data:
+
 - **2 Active Sensors**: Bin Station A (75%, Warning) & Septic Tank - Hospital (85%, Critical)
 - **4 Notifications**: Mixed types (info, warning, success) with read/unread status
 - **Current User**: Ahmed Hassan (Sanitation Manager, Ilala District Council)
@@ -307,12 +332,14 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## 👥 Author
 
 **Isdory Walter Denis**
+
 - GitHub: [@dennis25518](https://github.com/dennis25518)
 - Email: musicsmart255@gmail.com
 
 ## 🌍 Partnership
 
 In collaboration with:
+
 - **Ngao**: Dar es Salaam City Council
 - **Maji**: Tanzania Water Institute
 

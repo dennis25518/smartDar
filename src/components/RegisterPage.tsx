@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 
 interface RegisterPageProps {
   onBackToLogin: () => void;
@@ -13,12 +14,19 @@ export default function RegisterPage({
     firstName: "",
     lastName: "",
     email: "",
+    phone: "",
+    organization: "",
+    city: "",
+    country: "",
     password: "",
     confirmPassword: "",
     agreeToTerms: false,
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -34,13 +42,82 @@ export default function RegisterPage({
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+
+    // Validation
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match!");
+      setError("Passwords do not match!");
       return;
     }
-    console.log("Registration attempted with:", formData);
+
+    if (!formData.agreeToTerms) {
+      setError("You must agree to the terms and conditions.");
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+          },
+        },
+      });
+
+      if (authError) {
+        setError(authError.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!authData.user) {
+        setError("Signup failed. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      // Create user profile with additional fields
+      const { error: profileError } = await supabase
+        .from("users_profile")
+        .upsert([
+          {
+            user_id: authData.user.id,
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            email: formData.email,
+            phone: formData.phone || null,
+            organization: formData.organization || null,
+            city: formData.city || null,
+            country: formData.country || null,
+            status: "active",
+          },
+        ])
+        .select();
+
+      if (profileError) {
+        console.error("Profile creation error:", profileError);
+        // Don't fail the registration if profile creation fails
+      }
+
+      // Successfully registered - show success message
+      setSuccess(true);
+      setLoading(false);
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+      setLoading(false);
+    }
   };
 
   return (
@@ -169,6 +246,82 @@ export default function RegisterPage({
                     required
                   />
                 </div>
+              </div>
+
+              {/* Phone Field */}
+              <div>
+                <label
+                  htmlFor="phone"
+                  className="block text-xs sm:text-sm font-semibold text-gray-900 mb-2"
+                >
+                  PHONE (OPTIONAL)
+                </label>
+                <input
+                  id="phone"
+                  type="tel"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  placeholder="+255 123 456 789"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition"
+                />
+              </div>
+
+              {/* Organization Field */}
+              <div>
+                <label
+                  htmlFor="organization"
+                  className="block text-xs sm:text-sm font-semibold text-gray-900 mb-2"
+                >
+                  ORGANIZATION (OPTIONAL)
+                </label>
+                <input
+                  id="organization"
+                  type="text"
+                  name="organization"
+                  value={formData.organization}
+                  onChange={handleChange}
+                  placeholder="Your organization"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition"
+                />
+              </div>
+
+              {/* City Field */}
+              <div>
+                <label
+                  htmlFor="city"
+                  className="block text-xs sm:text-sm font-semibold text-gray-900 mb-2"
+                >
+                  CITY (OPTIONAL)
+                </label>
+                <input
+                  id="city"
+                  type="text"
+                  name="city"
+                  value={formData.city}
+                  onChange={handleChange}
+                  placeholder="Dar es Salaam"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition"
+                />
+              </div>
+
+              {/* Country Field */}
+              <div>
+                <label
+                  htmlFor="country"
+                  className="block text-xs sm:text-sm font-semibold text-gray-900 mb-2"
+                >
+                  COUNTRY (OPTIONAL)
+                </label>
+                <input
+                  id="country"
+                  type="text"
+                  name="country"
+                  value={formData.country}
+                  onChange={handleChange}
+                  placeholder="Tanzania"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition"
+                />
               </div>
 
               {/* Password Field */}
@@ -352,27 +505,63 @@ export default function RegisterPage({
                 </label>
               </div>
 
+              {/* Error Message */}
+              {error && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-600 text-sm font-medium">{error}</p>
+                </div>
+              )}
+
+              {/* Success Message */}
+              {success && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-green-600 text-sm font-medium">
+                    Account created successfully! Check your email to verify
+                    your account.
+                  </p>
+                </div>
+              )}
+
               {/* Create Account Button */}
               <button
                 type="submit"
-                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition transform hover:scale-105 active:scale-95 text-base sm:text-lg mt-6"
+                disabled={loading || success}
+                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition transform hover:scale-105 active:scale-95 text-base sm:text-lg mt-6"
               >
-                Create Account
+                {loading
+                  ? "Creating Account..."
+                  : success
+                    ? "Account Created"
+                    : "Create Account"}
               </button>
             </form>
 
             {/* Back to Login Link */}
-            <div className="text-center">
-              <p className="text-gray-700 text-sm sm:text-base">
-                Already have an account?{" "}
+            {!success && (
+              <div className="text-center">
+                <p className="text-gray-700 text-sm sm:text-base">
+                  Already have an account?{" "}
+                  <button
+                    onClick={onBackToLogin}
+                    className="text-green-600 hover:text-green-700 font-bold transition"
+                  >
+                    Sign In
+                  </button>
+                </p>
+              </div>
+            )}
+
+            {/* Back to Login Link (after success) */}
+            {success && (
+              <div className="text-center">
                 <button
                   onClick={onBackToLogin}
-                  className="text-green-600 hover:text-green-700 font-bold transition"
+                  className="text-green-600 hover:text-green-700 font-bold transition text-sm sm:text-base"
                 >
-                  Sign In
+                  ← Back to Sign In
                 </button>
-              </p>
-            </div>
+              </div>
+            )}
 
             {/* Footer Text */}
             <div className="text-center">

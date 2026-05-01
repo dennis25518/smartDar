@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 
 interface ForgotPasswordPageProps {
   onBackToLogin: () => void;
@@ -9,16 +10,38 @@ export default function ForgotPasswordPage({
 }: ForgotPasswordPageProps) {
   const [email, setEmail] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Password reset requested for:", email);
-    setIsSubmitted(true);
+    setError("");
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+
+      // Successfully sent reset email
+      setIsSubmitted(true);
+      setLoading(false);
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+      setLoading(false);
+    }
   };
 
   const handleReset = () => {
     setEmail("");
     setIsSubmitted(false);
+    setError("");
   };
 
   return (
@@ -93,12 +116,22 @@ export default function ForgotPasswordPage({
                     </p>
                   </div>
 
+                  {/* Error Message */}
+                  {error && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-red-600 text-sm font-medium">
+                        {error}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Send Reset Link Button */}
                   <button
                     type="submit"
-                    className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition transform hover:scale-105 active:scale-95 text-base sm:text-lg"
+                    disabled={loading}
+                    className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition transform hover:scale-105 active:scale-95 text-base sm:text-lg"
                   >
-                    Send Reset Link
+                    {loading ? "Sending..." : "Send Reset Link"}
                   </button>
                 </form>
 

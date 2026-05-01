@@ -1,16 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSensorData } from "../hooks/useSensorData";
+import { useUserProfile } from "../hooks/useUserProfile";
+import { supabase } from "../lib/supabaseClient";
+import ProfileSettings from "./ProfileSettings";
 
 interface DashboardPageProps {
   onLogout: () => void;
-}
-
-interface WasteLocation {
-  id: string;
-  name: string;
-  fillLevel: number;
-  status: "optimal" | "warning" | "critical";
-  lastUpdated: string;
-  location: string;
 }
 
 interface Notification {
@@ -28,69 +23,26 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [wasteLocations] = useState<WasteLocation[]>([
-    {
-      id: "1",
-      name: "Bin Station A",
-      fillLevel: 75,
-      status: "warning",
-      lastUpdated: "2 mins ago",
-      location: "City Center",
-    },
-    {
-      id: "3",
-      name: "Septic Tank - Hospital",
-      fillLevel: 85,
-      status: "critical",
-      lastUpdated: "1 min ago",
-      location: "Medical District",
-    },
-  ]);
 
-  const [currentUser] = useState({
-    name: "Ahmed Hassan",
-    email: "ahmed.hassan@ilaladcc.tz",
+  // Fetch real-time sensor data
+  const { sensors, latestReadings, alerts, loading, error } = useSensorData();
+
+  // Fetch user profile
+  const { profile, loading: profileLoading } = useUserProfile();
+
+  // Build current user from profile
+  const currentUser = {
+    name: profile
+      ? `${profile.first_name || ""} ${profile.last_name || ""}`.trim() ||
+        profile.email ||
+        "SmartDar User"
+      : "SmartDar User",
+    email: profile?.email || "user@smartdar.tz",
     image:
+      profile?.avatar_url ||
       "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop",
-  });
+  };
 
-  const [notifications] = useState<Notification[]>([
-    {
-      id: "1",
-      title: "Critical Level Alert",
-      message: "Septic Tank - Hospital has reached 85% capacity",
-      timestamp: "1 min ago",
-      type: "warning",
-      read: false,
-    },
-    {
-      id: "2",
-      title: "Dispatch Completed",
-      message: "Waste collection completed at Bin Station B",
-      timestamp: "25 mins ago",
-      type: "success",
-      read: true,
-    },
-    {
-      id: "3",
-      title: "System Update",
-      message: "New IoT sensors activated at City Center",
-      timestamp: "1 hour ago",
-      type: "info",
-      read: true,
-    },
-    {
-      id: "4",
-      title: "Warning Level",
-      message: "Bin Station A has reached 75% capacity",
-      timestamp: "2 hours ago",
-      type: "warning",
-      read: true,
-    },
-  ]);
-
-  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
-  const [dispatchReason, setDispatchReason] = useState("");
   const [supportForm, setSupportForm] = useState({
     name: currentUser.name,
     email: currentUser.email,
@@ -98,7 +50,100 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     category: "general",
     message: "",
   });
+
+  // Update support form when profile loads
+  useEffect(() => {
+    if (profile) {
+      setSupportForm((prev) => ({
+        ...prev,
+        name: currentUser.name,
+        email: currentUser.email,
+      }));
+    }
+  }, [profile, currentUser.name, currentUser.email]);
+
+  // Convert sensor readings to waste locations format
+  const wasteLocations = sensors.map((sensor) => {
+    // Get latest reading for this sensor
+    let fillLevel = 0;
+    let status: "optimal" | "warning" | "critical" = "optimal";
+    let lastUpdated = "No data";
+
+    // Get all readings for this sensor
+    const sensorReadings = Array.from(latestReadings.values()).filter(
+      (r) => r.sensor_id === sensor.id,
+    );
+
+    if (sensorReadings.length > 0) {
+      // Average the fill levels from all sensors
+      const avgFillLevel =
+        sensorReadings.reduce((sum, r) => sum + r.fill_level, 0) /
+        sensorReadings.length;
+      fillLevel = Math.round(avgFillLevel);
+
+      // Determine status
+      if (fillLevel >= 85) {
+        status = "critical";
+      } else if (fillLevel >= 60) {
+        status = "warning";
+      }
+
+      // Format last updated time
+      const lastReadingTime = new Date(sensorReadings[0].created_at);
+      const now = new Date();
+      const diffMs = now.getTime() - lastReadingTime.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+
+      if (diffMins < 1) {
+        lastUpdated = "Just now";
+      } else if (diffMins < 60) {
+        lastUpdated = `${diffMins} min${diffMins > 1 ? "s" : ""} ago`;
+      } else {
+        lastUpdated = lastReadingTime.toLocaleTimeString();
+      }
+    }
+
+    return {
+      id: sensor.id,
+      name: sensor.location_name,
+      fillLevel,
+      status,
+      lastUpdated,
+      location: sensor.device_id,
+    };
+  });
+
+  // Convert alerts to notifications
+  const notifications: Notification[] = alerts.map((alert) => ({
+    id: alert.id,
+    title:
+      alert.alert_type === "critical"
+        ? "⚠️ Critical Level Alert"
+        : "⚡ Warning Level Alert",
+    message: alert.message,
+    timestamp: formatTimestamp(new Date(alert.created_at)),
+    type: alert.alert_type === "critical" ? "warning" : "info",
+    read: alert.resolved,
+  }));
+
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [dispatchReason, setDispatchReason] = useState("");
+
+  function formatTimestamp(date: Date): string {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  }
   const [supportSubmitted, setSupportSubmitted] = useState(false);
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportError, setSupportError] = useState<string | null>(null);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -133,6 +178,56 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       );
       setSelectedLocation(null);
       setDispatchReason("");
+    }
+  };
+
+  const handleSupportSubmit = async () => {
+    if (!supportForm.subject || !supportForm.message) {
+      setSupportError("Please fill in all required fields");
+      return;
+    }
+
+    setSupportLoading(true);
+    setSupportError(null);
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+
+      const { error } = await supabase.from("support_tickets").insert([
+        {
+          user_id: user.id,
+          name: supportForm.name,
+          email: supportForm.email,
+          subject: supportForm.subject,
+          category: supportForm.category,
+          message: supportForm.message,
+          status: "open",
+        },
+      ]);
+
+      if (error) throw error;
+
+      setSupportSubmitted(true);
+      setSupportForm({
+        name: currentUser.name,
+        email: currentUser.email,
+        subject: "",
+        category: "general",
+        message: "",
+      });
+    } catch (err) {
+      setSupportError(
+        err instanceof Error ? err.message : "Failed to submit support ticket",
+      );
+      console.error("Support ticket error:", err);
+    } finally {
+      setSupportLoading(false);
     }
   };
 
@@ -500,164 +595,218 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           {/* Overview Tab */}
           {activeTab === "overview" && (
             <div className="space-y-8">
+              {/* Loading State */}
+              {loading && (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+                    <p className="mt-4 text-gray-600">Loading sensor data...</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Error State */}
+              {error && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-600">Error loading data: {error}</p>
+                </div>
+              )}
+
               {/* Overview Stats */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-2xl shadow-md">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-600 text-sm font-medium">
-                        Active Devices
-                      </p>
-                      <p className="text-3xl font-bold text-gray-900 mt-2">2</p>
-                    </div>
-                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                      <svg
-                        className="w-6 h-6 text-green-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl shadow-md">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-600 text-sm font-medium">
-                        Average Fill Level
-                      </p>
-                      <p className="text-3xl font-bold text-gray-900 mt-2">
-                        80%
-                      </p>
-                    </div>
-                    <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                      <svg
-                        className="w-6 h-6 text-yellow-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl shadow-md">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-600 text-sm font-medium">
-                        Critical Alerts
-                      </p>
-                      <p className="text-3xl font-bold text-red-600 mt-2">1</p>
-                    </div>
-                    <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-                      <svg
-                        className="w-6 h-6 text-red-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4m0 4v.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Waste Level Monitoring */}
-              <div className="space-y-6">
-                <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-6 rounded-2xl">
-                  <h2 className="text-2xl font-bold text-white">
-                    Real-Time Waste Levels
-                  </h2>
-                  <p className="text-green-100 mt-1">
-                    Monitor your {wasteLocations.length} active sensors
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {wasteLocations.map((location) => (
-                    <div
-                      key={location.id}
-                      className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition"
-                    >
-                      <div className="p-6">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex-1">
-                            <h3 className="text-xl font-bold text-gray-900">
-                              {location.name}
-                            </h3>
-                            <p className="text-sm text-gray-600 mt-1">
-                              📍 {location.location}
-                            </p>
-                          </div>
-                          <div
-                            className={`px-3 py-1 rounded-full font-semibold text-sm ${
-                              location.status === "critical"
-                                ? "bg-red-100 text-red-700"
-                                : location.status === "warning"
-                                  ? "bg-yellow-100 text-yellow-700"
-                                  : "bg-green-100 text-green-700"
-                            }`}
-                          >
-                            {location.status.toUpperCase()}
-                          </div>
-                        </div>
-
-                        <div className="flex items-baseline space-x-2 mb-4">
-                          <p
-                            className={`text-4xl font-bold ${getStatusTextColor(location.status)}`}
-                          >
-                            {location.fillLevel}%
+              {!loading && !error && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-white p-6 rounded-2xl shadow-md">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-gray-600 text-sm font-medium">
+                            Active Devices
                           </p>
-                          <p className="text-gray-600 text-sm">capacity</p>
+                          <p className="text-3xl font-bold text-gray-900 mt-2">
+                            {sensors.length}
+                          </p>
                         </div>
-
-                        <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden mb-3">
-                          <div
-                            className={`h-full ${getStatusColor(location.status)} transition-all duration-500 rounded-full`}
-                            style={{ width: `${location.fillLevel}%` }}
-                          ></div>
-                        </div>
-
-                        <p className="text-xs text-gray-500 mb-4">
-                          ⏱ Last updated: {location.lastUpdated}
-                        </p>
-
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => setSelectedLocation(location.name)}
-                            className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition text-sm"
+                        <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                          <svg
+                            className="w-6 h-6 text-green-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
                           >
-                            Request Dispatch
-                          </button>
-                          <button className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium transition text-sm">
-                            View Details
-                          </button>
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+
+                    <div className="bg-white p-6 rounded-2xl shadow-md">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-gray-600 text-sm font-medium">
+                            Average Fill Level
+                          </p>
+                          <p className="text-3xl font-bold text-gray-900 mt-2">
+                            {wasteLocations.length > 0
+                              ? Math.round(
+                                  wasteLocations.reduce(
+                                    (a, b) => a + b.fillLevel,
+                                    0,
+                                  ) / wasteLocations.length,
+                                )
+                              : 0}
+                            %
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+                          <svg
+                            className="w-6 h-6 text-yellow-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-2xl shadow-md">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-gray-600 text-sm font-medium">
+                            Critical Alerts
+                          </p>
+                          <p className="text-3xl font-bold text-red-600 mt-2">
+                            {
+                              alerts.filter(
+                                (a) =>
+                                  a.alert_type === "critical" && !a.resolved,
+                              ).length
+                            }
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                          <svg
+                            className="w-6 h-6 text-red-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 8v4m0 4v.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Waste Level Monitoring */}
+                  <div className="space-y-6">
+                    <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-6 rounded-2xl">
+                      <h2 className="text-2xl font-bold text-white">
+                        Real-Time Waste Levels
+                      </h2>
+                      <p className="text-green-100 mt-1">
+                        Monitor your {wasteLocations.length} active sensor
+                        {wasteLocations.length !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    {wasteLocations.length === 0 ? (
+                      <div className="bg-white p-8 rounded-2xl text-center">
+                        <p className="text-gray-600">
+                          No sensors registered yet.
+                        </p>
+                        <p className="text-sm text-gray-500 mt-2">
+                          Please register your ESP32 device in your settings.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {wasteLocations.map((location) => (
+                          <div
+                            key={location.id}
+                            className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition"
+                          >
+                            <div className="p-6">
+                              <div className="flex items-start justify-between mb-4">
+                                <div className="flex-1">
+                                  <h3 className="text-xl font-bold text-gray-900">
+                                    {location.name}
+                                  </h3>
+                                  <p className="text-sm text-gray-600 mt-1">
+                                    📍 {location.location}
+                                  </p>
+                                </div>
+                                <div
+                                  className={`px-3 py-1 rounded-full font-semibold text-sm ${
+                                    location.status === "critical"
+                                      ? "bg-red-100 text-red-700"
+                                      : location.status === "warning"
+                                        ? "bg-yellow-100 text-yellow-700"
+                                        : "bg-green-100 text-green-700"
+                                  }`}
+                                >
+                                  {location.status.toUpperCase()}
+                                </div>
+                              </div>
+
+                              <div className="flex items-baseline space-x-2 mb-4">
+                                <p
+                                  className={`text-4xl font-bold ${getStatusTextColor(location.status)}`}
+                                >
+                                  {location.fillLevel}%
+                                </p>
+                                <p className="text-gray-600 text-sm">
+                                  capacity
+                                </p>
+                              </div>
+
+                              <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden mb-3">
+                                <div
+                                  className={`h-full ${getStatusColor(location.status)} transition-all duration-500 rounded-full`}
+                                  style={{ width: `${location.fillLevel}%` }}
+                                ></div>
+                              </div>
+
+                              <p className="text-xs text-gray-500 mb-4">
+                                ⏱ Last updated: {location.lastUpdated}
+                              </p>
+
+                              <div className="flex gap-3">
+                                <button
+                                  onClick={() =>
+                                    setSelectedLocation(location.name)
+                                  }
+                                  className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition text-sm"
+                                >
+                                  Request Dispatch
+                                </button>
+                                <button className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium transition text-sm">
+                                  View Details
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -908,91 +1057,9 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
           {/* Profile Tab */}
           {activeTab === "profile" && (
-            <div className="max-w-2xl mx-auto">
-              <div className="bg-white rounded-3xl shadow-lg overflow-hidden">
-                <div className="bg-gradient-to-br from-green-600 via-emerald-600 to-teal-600 p-12 text-white text-center">
-                  <img
-                    src={currentUser.image}
-                    alt={currentUser.name}
-                    className="w-32 h-32 rounded-full object-cover mx-auto mb-6 border-4 border-white shadow-lg"
-                  />
-                  <h2 className="text-4xl font-bold">{currentUser.name}</h2>
-                  <p className="text-green-100 mt-2 text-lg">
-                    Sanitation Manager • Ilala District Council
-                  </p>
-                  <p className="text-green-50 mt-1 text-sm font-medium">
-                    Active Member • Verified Account
-                  </p>
-                </div>
-
-                <div className="p-8 space-y-6">
-                  <div className="grid grid-cols-2 gap-6 pb-6 border-b border-gray-200">
-                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-xl">
-                      <p className="text-xs text-blue-600 font-bold uppercase tracking-wide">
-                        Email
-                      </p>
-                      <p className="text-gray-900 font-semibold mt-1">
-                        {currentUser.email}
-                      </p>
-                    </div>
-                    <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-xl">
-                      <p className="text-xs text-green-600 font-bold uppercase tracking-wide">
-                        Active Sensors
-                      </p>
-                      <p className="text-gray-900 font-semibold mt-1">
-                        2 Devices
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">
-                      Organization
-                    </label>
-                    <div className="bg-gray-100 px-4 py-3 rounded-xl font-semibold text-gray-900">
-                      Ilala District Council
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">
-                        Region
-                      </label>
-                      <div className="bg-gray-100 px-4 py-3 rounded-xl font-semibold text-gray-900">
-                        Dar es Salaam
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">
-                        Member Since
-                      </label>
-                      <div className="bg-gray-100 px-4 py-3 rounded-xl font-semibold text-gray-900">
-                        Jan 2026
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-green-50 border-l-4 border-green-600 p-4 rounded-lg mt-6">
-                    <p className="text-green-800 font-semibold">
-                      ✓ Account Status: Active
-                    </p>
-                    <p className="text-sm text-green-700 mt-1">
-                      All systems operational and sensors responding normally
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 pt-6">
-                    <button className="border-2 border-gray-300 hover:border-green-600 text-gray-700 hover:text-green-600 px-6 py-3 rounded-lg font-bold transition">
-                      Edit Profile
-                    </button>
-                    <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold transition">
-                      Change Password
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ProfileSettings
+              onBackToDashboard={() => setActiveTab("overview")}
+            />
           )}
 
           {/* Support Tab */}
@@ -1175,17 +1242,21 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                         </p>
                       </div>
 
+                      {supportError && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                          <p className="text-red-700 font-semibold">Error:</p>
+                          <p className="text-red-600 text-sm mt-1">
+                            {supportError}
+                          </p>
+                        </div>
+                      )}
+
                       <button
-                        onClick={() => {
-                          if (supportForm.subject && supportForm.message) {
-                            setSupportSubmitted(true);
-                          } else {
-                            alert("Please fill in all required fields");
-                          }
-                        }}
-                        className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-3 rounded-lg transition"
+                        onClick={handleSupportSubmit}
+                        disabled={supportLoading}
+                        className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-green-400 disabled:to-emerald-400 text-white font-bold py-3 rounded-lg transition"
                       >
-                        Send Support Request
+                        {supportLoading ? "Sending..." : "Send Support Request"}
                       </button>
                     </div>
                   </div>
