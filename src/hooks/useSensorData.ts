@@ -50,6 +50,9 @@ export const useSensorData = (): UseSensorDataReturn => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let currentUserId: string | null = null;
+    let sensorIds: string[] = [];
+
     const fetchInitialData = async () => {
       try {
         // Get current user
@@ -63,6 +66,8 @@ export const useSensorData = (): UseSensorDataReturn => {
           return;
         }
 
+        currentUserId = user.id;
+
         // Fetch sensors
         const { data: sensorsData, error: sensorsError } = await supabase
           .from("sensors")
@@ -71,11 +76,10 @@ export const useSensorData = (): UseSensorDataReturn => {
 
         if (sensorsError) throw sensorsError;
         setSensors(sensorsData || []);
+        sensorIds = (sensorsData || []).map((s) => s.id);
 
         // Fetch latest readings
         if (sensorsData && sensorsData.length > 0) {
-          const sensorIds = sensorsData.map((s) => s.id);
-
           const { data: readingsData, error: readingsError } = await supabase
             .from("sensor_readings")
             .select("*")
@@ -108,74 +112,91 @@ export const useSensorData = (): UseSensorDataReturn => {
         }
 
         setLoading(false);
+
+        // Setup real-time subscriptions after data is loaded
+        setupRealtimeSubscriptions(currentUserId, sensorIds);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error");
         setLoading(false);
       }
     };
 
-    fetchInitialData();
+    const setupRealtimeSubscriptions = (userId: string, sIds: string[]) => {
+      if (sIds.length === 0) return;
 
-    // Subscribe to real-time updates for sensor_readings
-    const readingsSubscription = supabase
-      .channel("sensor_readings_realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "sensor_readings",
-        },
-        (payload) => {
-          const newReading = payload.new as SensorReading;
-          setLatestReadings((prev) => {
-            const updated = new Map(prev);
-            const key = `${newReading.sensor_id}-${newReading.sensor_number}`;
-            updated.set(key, newReading);
-            return updated;
-          });
-        },
-      )
-      .subscribe();
+      // Subscribe to real-time updates for sensor_readings
+      const readingsSubscription = supabase
+        .channel(`sensor_readings_${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "sensor_readings",
+            filter: `sensor_id=in.(${sIds.join(",")})`,
+          },
+          (payload) => {
+            const newReading = payload.new as SensorReading;
+            console.log("📊 New sensor reading:", newReading);
+            setLatestReadings((prev) => {
+              const updated = new Map(prev);
+              const key = `${newReading.sensor_id}-${newReading.sensor_number}`;
+              updated.set(key, newReading);
+              return updated;
+            });
+          },
+        )
+        .subscribe((status) => {
+          console.log("Readings subscription:", status);
+        });
 
-    // Subscribe to real-time updates for alerts
-    const alertsSubscription = supabase
-      .channel("alerts_realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "alerts",
-        },
-        (payload) => {
-          const newAlert = payload.new as Alert;
-          setAlerts((prev) => [newAlert, ...prev]);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "alerts",
-        },
-        (payload) => {
-          const updatedAlert = payload.new as Alert;
-          setAlerts((prev) =>
-            prev.map((alert) =>
-              alert.id === updatedAlert.id ? updatedAlert : alert,
-            ),
-          );
-        },
-      )
-      .subscribe();
+      // Subscribe to real-time updates for alerts
+      const alertsSubscription = supabase
+        .channel(`alerts_${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "alerts",
+            filter: `sensor_id=in.(${sIds.join(",")})`,
+          },
+          (payload) => {
+            const newAlert = payload.new as Alert;
+            console.log("🚨 New alert:", newAlert);
+            setAlerts((prev) => [newAlert, ...prev]);
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "alerts",
+            filter: `sensor_id=in.(${sIds.join(",")})`,
+          },
+          (payload) => {
+            const updatedAlert = payload.new as Alert;
+            console.log("📝 Alert updated:", updatedAlert);
+            setAlerts((prev) =>
+              prev.map((alert) =>
+                alert.id === updatedAlert.id ? updatedAlert : alert,
+              ),
+            );
+          },
+        )
+        .subscribe((status) => {
+          console.log("Alerts subscription:", status);
+        });
 
-    // Cleanup subscriptions
-    return () => {
-      readingsSubscription.unsubscribe();
-      alertsSubscription.unsubscribe();
+      // Cleanup subscriptions
+      return () => {
+        readingsSubscription.unsubscribe();
+        alertsSubscription.unsubscribe();
+      };
     };
+
+    fetchInitialData();
   }, []);
 
   return { sensors, latestReadings, alerts, loading, error };

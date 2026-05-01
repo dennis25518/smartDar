@@ -3,9 +3,11 @@
 ## Quick Setup for Testing
 
 ### Step 1: Use Simple Firmware
+
 Use **[ESP32_SIMPLE_PUBLIC.ino](ESP32_SIMPLE_PUBLIC.ino)** instead - NO Anon Key needed!
 
 Just update:
+
 ```cpp
 const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
@@ -22,13 +24,14 @@ const char* DEVICE_ID = "esp32_household_1";
 4. Click **receive-sensor-data**
 5. Look for **Function Details** or **Settings** tab
 6. Find a toggle or setting for:
-   - **"Require Auth"** or **"Authentication"** 
-   - **"JWT Verification"** 
+   - **"Require Auth"** or **"Authentication"**
+   - **"JWT Verification"**
    - **"Security"**
 7. **Disable/Toggle OFF** any authentication requirement
 8. **Save** or **Deploy**
 
 Alternatively, if you see a code editor:
+
 - The function should NOT require Bearer token validation
 - It should accept all POST requests
 
@@ -63,6 +66,7 @@ Response: {"success":true,...}
 ## Why It's Still Failing?
 
 The "YOUR_SECRE" prefix in the error log means:
+
 - ❌ The Anon Key field still has the placeholder text
 - ❌ OR the function has strict auth validation enabled
 
@@ -73,7 +77,8 @@ The "YOUR_SECRE" prefix in the error log means:
 ## After Testing
 
 Once it's working, we can:
-1. Add proper API key authentication 
+
+1. Add proper API key authentication
 2. Add rate limiting
 3. Add device validation
 4. Secure for production
