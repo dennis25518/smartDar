@@ -1,0 +1,130 @@
+import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+// PUBLIC VERSION - FOR TESTING ONLY
+// No authentication required - device_id validation only
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error("Missing Supabase configuration");
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const body = await req.json();
+    const { device_id, sensors: sensorData } = body;
+
+    console.log(
+      `[IoT] Device: ${device_id}, Readings: ${sensorData?.length || 0}`,
+    );
+
+    if (!device_id || !sensorData || !Array.isArray(sensorData)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid payload", success: false }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    // Validate device exists
+    const { data: sensor, error: sensorError } = await supabase
+      .from("sensors")
+      .select("id")
+      .eq("device_id", device_id)
+      .single();
+
+    if (sensorError || !sensor) {
+      return new Response(
+        JSON.stringify({ error: "Device not registered", device_id }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    // Insert readings
+    const readings = sensorData.map((s: any) => ({
+      sensor_id: sensor.id,
+      device_id,
+      sensor_number: s.sensor_id,
+      fill_level: s.fill_level,
+      distance_mm: s.distance_mm,
+    }));
+
+    const { error: insertError } = await supabase
+      .from("sensor_readings")
+      .insert(readings);
+
+    if (insertError) throw insertError;
+
+    // Check for alerts
+    for (const reading of sensorData) {
+      const fillLevel = reading.fill_level;
+      if (fillLevel >= 85 || fillLevel >= 60) {
+        const alertType = fillLevel >= 85 ? "critical" : "warning";
+
+        const { data: existing } = await supabase
+          .from("alerts")
+          .select("id")
+          .eq("sensor_id", sensor.id)
+          .eq("alert_type", alertType)
+          .eq("resolved", false)
+          .single();
+
+        if (!existing) {
+          await supabase.from("alerts").insert([
+            {
+              sensor_id: sensor.id,
+              device_id,
+              sensor_number: reading.sensor_id,
+              alert_type: alertType,
+              fill_level_trigger: fillLevel,
+              message: `${alertType.toUpperCase()}: ${fillLevel}% full`,
+            },
+          ]);
+        }
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ success: true, inserted: readings.length }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    console.error(error);
+    return new Response(
+      JSON.stringify({ error: error.message, success: false }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
+  }
+});

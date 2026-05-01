@@ -12,6 +12,7 @@
 ## Step 2: Update ESP32 Code
 
 ### Option A: Use the Pre-Made Firmware (RECOMMENDED)
+
 1. Open [ESP32_FIRMWARE_WITH_AUTH.ino](ESP32_FIRMWARE_WITH_AUTH.ino)
 2. Replace the configuration section:
 
@@ -28,22 +29,23 @@ const char* DEVICE_ID = "esp32_household_1";   // ← Change if needed
 ```
 
 ### Option B: Update Existing Code
+
 Find your `sendToSupabase` function and update it:
 
 ```cpp
 void sendToSupabase(String payload) {
   HTTPClient http;
-  
+
   const char* SUPABASE_ANON_KEY = "YOUR_ANON_KEY_HERE";  // ← ADD THIS
-  
+
   http.begin(SERVER_URL);
-  
+
   // Add these two lines
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);  // ← ADD THIS
-  
+
   int httpCode = http.POST(payload);
-  
+
   // ... rest of code
 }
 ```
@@ -93,18 +95,21 @@ Response: {"success":true,...}
 ## Troubleshooting
 
 ### Still Getting 401 Error?
+
 - ✅ Did you paste the Anon Key correctly?
 - ✅ Is there whitespace before/after the key? (Remove it)
 - ✅ Did you add both header lines?
 
 ### Network Issues?
+
 - Ensure ESP32 is on 2.4GHz network (not 5GHz)
 - Try connecting to 2.4GHz WiFi instead
 
 ### Data Not Showing in Dashboard?
+
 1. Check Supabase SQL:
    ```sql
-   SELECT * FROM sensor_readings 
+   SELECT * FROM sensor_readings
    ORDER BY created_at DESC LIMIT 5;
    ```
 2. Check Edge Function logs for errors
