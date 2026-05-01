@@ -57,10 +57,13 @@ serve(async (req) => {
 
     if (sensorError || !sensorRecord) {
       console.error("Sensor not found:", device_id);
-      return new Response(JSON.stringify({ error: "Device not registered", device_id }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Device not registered", device_id }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     // Insert sensor readings
@@ -82,7 +85,9 @@ serve(async (req) => {
       throw insertError;
     }
 
-    console.log(`Successfully inserted ${readings.length} readings for device ${device_id}`);
+    console.log(
+      `Successfully inserted ${readings.length} readings for device ${device_id}`,
+    );
 
     // Check for threshold breaches and create alerts
     for (const reading of sensorData) {
