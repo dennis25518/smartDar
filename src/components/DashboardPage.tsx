@@ -1056,11 +1056,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           )}
 
           {/* Profile Tab */}
-          {activeTab === "profile" && (
-            <ProfileSettings
-              onBackToDashboard={() => setActiveTab("overview")}
-            />
-          )}
+          {activeTab === "profile" && <ProfileSettings />}
 
           {/* Support Tab */}
           {activeTab === "support" && (
