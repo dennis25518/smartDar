@@ -17,15 +17,8 @@ async function sendWhatsAppMessage(
     const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
     const whatsappFrom = Deno.env.get("TWILIO_WHATSAPP_NUMBER");
 
-    console.log("Twilio Config Check:", {
-      hasAccountSid: !!accountSid,
-      hasAuthToken: !!authToken,
-      hasWhatsappFrom: !!whatsappFrom,
-      whatsappFrom: whatsappFrom || "NOT SET",
-    });
-
     if (!accountSid || !authToken || !whatsappFrom) {
-      console.error("❌ Missing Twilio configuration");
+      console.error("Missing Twilio configuration");
       return false;
     }
 
@@ -33,15 +26,7 @@ async function sendWhatsAppMessage(
     const toPhone = phoneNumber.startsWith("whatsapp:")
       ? phoneNumber
       : `whatsapp:${phoneNumber}`;
-    const fromPhone = whatsappFrom.startsWith("whatsapp:")
-      ? whatsappFrom
-      : `whatsapp:${whatsappFrom}`;
-
-    console.log("WhatsApp Message Details:", {
-      from: fromPhone,
-      to: toPhone,
-      message: message.substring(0, 50) + "...",
-    });
+    const fromPhone = `whatsapp:${whatsappFrom}`;
 
     // Create Basic Auth header for Twilio
     const credentials = btoa(`${accountSid}:${authToken}`);
@@ -62,22 +47,17 @@ async function sendWhatsAppMessage(
       },
     );
 
-    console.log("Twilio Response Status:", response.status);
-
     if (!response.ok) {
       const errorData = await response.json();
-      console.error("❌ Twilio API error:", {
-        status: response.status,
-        error: errorData,
-      });
+      console.error("Twilio API error:", errorData);
       return false;
     }
 
     const data = await response.json();
-    console.log("✅ WhatsApp message sent successfully. SID:", data.sid);
+    console.log("WhatsApp message sent successfully. SID:", data.sid);
     return true;
   } catch (error) {
-    console.error("❌ Error sending WhatsApp message:", error);
+    console.error("Error sending WhatsApp message:", error);
     return false;
   }
 }
@@ -169,18 +149,10 @@ serve(async (req) => {
       const fillLevel = reading.fill_level;
       let alertType = null;
 
-      console.log(
-        `Processing sensor ${reading.sensor_id}: fill_level = ${fillLevel}%`,
-      );
-
       if (fillLevel >= 85) {
         alertType = "critical";
-        console.log(`⚠️ CRITICAL threshold exceeded (85%)`);
       } else if (fillLevel >= 60) {
         alertType = "warning";
-        console.log(`⚠️ WARNING threshold exceeded (60%)`);
-      } else {
-        console.log(`✅ Fill level below thresholds (below 60%)`);
       }
 
       if (alertType) {
@@ -194,14 +166,8 @@ serve(async (req) => {
           .eq("resolved", false)
           .single();
 
-        if (existingAlert) {
-          console.log(
-            `Alert already exists for sensor ${reading.sensor_id} at ${alertType} level. Skipping.`,
-          );
-        } else {
-          console.log(
-            `Creating new ${alertType} alert for sensor ${reading.sensor_id}`,
-          );
+        // Only create new alert if one doesn't already exist
+        if (!existingAlert) {
           const message =
             alertType === "critical"
               ? `Sensor ${reading.sensor_id}: Critical level reached (${fillLevel}%)`
@@ -220,15 +186,12 @@ serve(async (req) => {
           ]);
 
           if (alertError) {
-            console.error("❌ Error creating alert:", alertError);
+            console.error("Error creating alert:", alertError);
           } else {
-            console.log(`✅ Alert created for sensor ${reading.sensor_id}`);
-
             // Fetch user's phone number for WhatsApp notification
             let phoneNumber: string | null = null;
 
             // First try to get the sensor owner's phone from users_profile
-            console.log(`Fetching phone for user_id: ${sensorRecord.user_id}`);
             const { data: userProfile, error: profileError } = await supabase
               .from("users_profile")
               .select("phone")
@@ -237,22 +200,12 @@ serve(async (req) => {
 
             if (userProfile?.phone) {
               phoneNumber = userProfile.phone;
-              console.log(
-                `Found user phone: ${phoneNumber} for sensor ${reading.sensor_id}`,
-              );
             } else if (profileError && profileError.code !== "PGRST116") {
               console.error("Error fetching user profile:", profileError);
-            } else {
-              console.log(
-                `No user phone found for user_id ${sensorRecord.user_id}`,
-              );
             }
 
             // If user phone not found, try to get admin's phone from admin_profiles_table
             if (!phoneNumber) {
-              console.log(
-                "Attempting fallback to admin phone from admin_profiles_table",
-              );
               const { data: adminProfile } = await supabase
                 .from("admin_profiles_table")
                 .select("phone")
@@ -262,9 +215,6 @@ serve(async (req) => {
 
               if (adminProfile?.phone) {
                 phoneNumber = adminProfile.phone;
-                console.log(`Found admin phone: ${phoneNumber}`);
-              } else {
-                console.log("No admin phone found");
               }
             }
 
@@ -275,9 +225,6 @@ serve(async (req) => {
                   ? `🚨 CRITICAL ALERT: Device ${device_id}, Sensor ${reading.sensor_id} is now ${fillLevel}% FULL! Please empty the bin immediately.`
                   : `⚠️ WARNING: Device ${device_id}, Sensor ${reading.sensor_id} has reached ${fillLevel}% capacity. Please monitor or empty soon.`;
 
-              console.log(
-                `Sending WhatsApp to ${phoneNumber}: ${whatsappMessage}`,
-              );
               const sent = await sendWhatsAppMessage(
                 phoneNumber,
                 whatsappMessage,
@@ -285,14 +232,14 @@ serve(async (req) => {
 
               if (sent) {
                 console.log(
-                  `✅ WhatsApp alert sent to ${phoneNumber} for sensor ${reading.sensor_id}`,
+                  `WhatsApp alert sent to ${phoneNumber} for sensor ${reading.sensor_id}`,
                 );
               } else {
-                console.warn(`❌ Failed to send WhatsApp to ${phoneNumber}`);
+                console.warn(`Failed to send WhatsApp to ${phoneNumber}`);
               }
             } else {
               console.log(
-                "⚠️ No phone number found for user or admin. WhatsApp alert not sent.",
+                "No phone number found for user or admin. WhatsApp alert not sent.",
               );
             }
           }

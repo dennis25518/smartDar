@@ -84,6 +84,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           lastUpdated: "No data",
           location: sensor.device_id,
           sensorNumber: 0,
+          activeAlert: null,
         },
       ];
     }
@@ -95,6 +96,14 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       } else if (reading.fill_level >= 60) {
         status = "warning";
       }
+
+      // Find active alert for this sensor
+      const activeAlert = alerts.find(
+        (a) =>
+          a.sensor_number === reading.sensor_number &&
+          a.sensor_id === sensor.id &&
+          !a.resolved,
+      );
 
       const lastReadingTime = new Date(reading.created_at);
       const now = new Date();
@@ -125,6 +134,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         lastUpdated,
         location: sensor.device_id,
         sensorNumber: reading.sensor_number,
+        activeAlert,
       };
     });
   });
@@ -758,7 +768,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                             className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition"
                           >
                             <div className="p-6">
-                              <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-start justify-between mb-4">
                                 <div className="flex-1">
                                   <h3 className="text-xl font-bold text-gray-900">
                                     {location.name}
@@ -767,16 +777,36 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                                     📍 {location.location}
                                   </p>
                                 </div>
-                                <div
-                                  className={`px-3 py-1 rounded-full font-semibold text-sm ${
-                                    location.status === "critical"
-                                      ? "bg-red-100 text-red-700"
-                                      : location.status === "warning"
-                                        ? "bg-yellow-100 text-yellow-700"
-                                        : "bg-green-100 text-green-700"
-                                  }`}
-                                >
-                                  {location.status.toUpperCase()}
+                                <div className="flex flex-col gap-2 items-end">
+                                  <div
+                                    className={`px-3 py-1 rounded-full font-semibold text-sm ${
+                                      location.status === "critical"
+                                        ? "bg-red-100 text-red-700"
+                                        : location.status === "warning"
+                                          ? "bg-yellow-100 text-yellow-700"
+                                          : "bg-green-100 text-green-700"
+                                    }`}
+                                  >
+                                    {location.status.toUpperCase()}
+                                  </div>
+                                  {location.activeAlert && (
+                                    <div
+                                      className={`px-2 py-1 rounded-full font-semibold text-xs flex items-center gap-1 ${
+                                        location.activeAlert.alert_type ===
+                                        "critical"
+                                          ? "bg-red-100 text-red-700"
+                                          : "bg-yellow-100 text-yellow-700"
+                                      }`}
+                                    >
+                                      <span>
+                                        {location.activeAlert.alert_type ===
+                                        "critical"
+                                          ? "🚨"
+                                          : "⚠️"}
+                                      </span>
+                                      ALERT
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
