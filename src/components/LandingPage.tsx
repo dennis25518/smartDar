@@ -2,9 +2,13 @@ import { useState } from "react";
 
 interface LandingPageProps {
   onGetStarted: () => void;
+  onAdminLogin: () => void;
 }
 
-export default function LandingPage({ onGetStarted }: LandingPageProps) {
+export default function LandingPage({
+  onGetStarted,
+  onAdminLogin,
+}: LandingPageProps) {
   const [isHovering, setIsHovering] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -733,9 +737,17 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       {/* Footer */}
       <footer className="bg-white border-t border-gray-200 py-8 sm:py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-6 sm:gap-0">
-          <p className="text-gray-600 text-xs sm:text-sm">
-            &copy; 2026 smartDar. All rights reserved.
-          </p>
+          <div className="flex flex-col items-start gap-2">
+            <p className="text-gray-600 text-xs sm:text-sm">
+              &copy; 2026 smartDar. All rights reserved.
+            </p>
+            <button
+              onClick={onAdminLogin}
+              className="text-xs text-gray-500  hover:text-green-600 transition font-medium underline"
+            >
+              Admin Portal
+            </button>
+          </div>
           <div className="flex flex-col items-center gap-4">
             <p className="text-gray-600 text-xs sm:text-sm font-semibold">
               In Collaboration with

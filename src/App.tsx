@@ -5,6 +5,8 @@ import LoginPage from "./components/LoginPage";
 import RegisterPage from "./components/RegisterPage";
 import ForgotPasswordPage from "./components/ForgotPasswordPage";
 import DashboardPage from "./components/DashboardPage";
+import AdminLoginPage from "./components/AdminLoginPage";
+import AdminDashboardPage from "./components/AdminDashboardPage";
 
 type PageType =
   | "landing"
@@ -12,6 +14,8 @@ type PageType =
   | "register"
   | "forgot-password"
   | "dashboard"
+  | "admin-login"
+  | "admin"
   | "loading";
 
 export default function App() {
@@ -71,7 +75,10 @@ export default function App() {
   return (
     <>
       {currentPage === "landing" && (
-        <LandingPage onGetStarted={() => setCurrentPage("login")} />
+        <LandingPage
+          onGetStarted={() => setCurrentPage("login")}
+          onAdminLogin={() => setCurrentPage("admin-login")}
+        />
       )}
       {currentPage === "login" && (
         <LoginPage
@@ -91,6 +98,15 @@ export default function App() {
         <ForgotPasswordPage onBackToLogin={() => setCurrentPage("login")} />
       )}
       {currentPage === "dashboard" && <DashboardPage onLogout={handleLogout} />}
+      {currentPage === "admin-login" && (
+        <AdminLoginPage
+          onBackToLanding={() => setCurrentPage("landing")}
+          onLoginSuccess={() => setCurrentPage("admin")}
+        />
+      )}
+      {currentPage === "admin" && (
+        <AdminDashboardPage onLogout={handleLogout} />
+      )}
     </>
   );
 }
