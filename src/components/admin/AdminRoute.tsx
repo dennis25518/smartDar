@@ -151,6 +151,7 @@ export default function AdminRoute({ sensors }: AdminRouteProps) {
         if (map.getSource("optimized-route")) {
           (map.getSource("optimized-route") as mapboxgl.GeoJSONSource).setData({
             type: "Feature",
+            properties: {},
             geometry: {
               type: "LineString",
               coordinates: routeLine,
@@ -161,6 +162,7 @@ export default function AdminRoute({ sensors }: AdminRouteProps) {
             type: "geojson",
             data: {
               type: "Feature",
+              properties: {},
               geometry: {
                 type: "LineString",
                 coordinates: routeLine,
@@ -224,12 +226,6 @@ export default function AdminRoute({ sensors }: AdminRouteProps) {
     const map = mapRef.current;
     if (!map) return;
     map.zoomTo(map.getZoom() + value, { duration: 400 });
-  };
-
-  const getStatusColor = (fillLevel: number) => {
-    if (fillLevel >= 85) return "bg-red-100 border-red-300";
-    if (fillLevel >= 60) return "bg-yellow-100 border-yellow-300";
-    return "bg-green-100 border-green-300";
   };
 
   const getStatusIcon = (fillLevel: number) => {

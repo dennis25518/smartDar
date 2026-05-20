@@ -52,6 +52,7 @@ export const useSensorData = (): UseSensorDataReturn => {
   useEffect(() => {
     let currentUserId: string | null = null;
     let sensorIds: string[] = [];
+    let cleanupRealtimeSubscriptions: (() => void) | undefined;
 
     const fetchInitialData = async () => {
       try {
@@ -114,19 +115,27 @@ export const useSensorData = (): UseSensorDataReturn => {
         setLoading(false);
 
         // Setup real-time subscriptions after data is loaded
-        setupRealtimeSubscriptions(currentUserId, sensorIds);
+        cleanupRealtimeSubscriptions = setupRealtimeSubscriptions(
+          currentUserId,
+          sensorIds,
+        );
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error");
         setLoading(false);
       }
     };
 
-    const setupRealtimeSubscriptions = (userId: string, sIds: string[]) => {
+    const setupRealtimeSubscriptions = (
+      userId: string,
+      sIds: string[],
+    ): (() => void) | undefined => {
       if (sIds.length === 0) return;
 
-      // Subscribe to real-time updates for sensor_readings
+      // Create readings subscription with a unique channel name to avoid reusing
+      // a previously subscribed channel and adding callbacks after subscribe.
+      const readingsChannelName = `sensor_readings_${userId}_${Date.now()}`;
       const readingsSubscription = supabase
-        .channel(`sensor_readings_${userId}`)
+        .channel(readingsChannelName)
         .on(
           "postgres_changes",
           {
@@ -147,12 +156,13 @@ export const useSensorData = (): UseSensorDataReturn => {
           },
         )
         .subscribe((status) => {
-          console.log("Readings subscription:", status);
+          console.log("Readings subscription status:", status);
         });
 
-      // Subscribe to real-time updates for alerts
+      // Create alerts subscription with all listeners chained before subscribe
+      const alertsChannelName = `alerts_${userId}_${Date.now()}`;
       const alertsSubscription = supabase
-        .channel(`alerts_${userId}`)
+        .channel(alertsChannelName)
         .on(
           "postgres_changes",
           {
@@ -186,10 +196,10 @@ export const useSensorData = (): UseSensorDataReturn => {
           },
         )
         .subscribe((status) => {
-          console.log("Alerts subscription:", status);
+          console.log("Alerts subscription status:", status);
         });
 
-      // Cleanup subscriptions
+      // Return cleanup function
       return () => {
         readingsSubscription.unsubscribe();
         alertsSubscription.unsubscribe();
@@ -197,6 +207,13 @@ export const useSensorData = (): UseSensorDataReturn => {
     };
 
     fetchInitialData();
+
+    // Return cleanup function from useEffect
+    return () => {
+      if (cleanupRealtimeSubscriptions) {
+        cleanupRealtimeSubscriptions();
+      }
+    };
   }, []);
 
   return { sensors, latestReadings, alerts, loading, error };
