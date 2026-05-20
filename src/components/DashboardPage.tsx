@@ -62,38 +62,45 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   }, [profile, currentUser.name, currentUser.email]);
 
-  // Convert sensor readings to waste locations format
-  const wasteLocations = sensors.map((sensor) => {
-    // Get latest reading for this sensor
-    let fillLevel = 0;
-    let status: "optimal" | "warning" | "critical" = "optimal";
-    let lastUpdated = "No data";
+  // Labels for each sensor_number
+  const sensorNumberLabels: Record<number, string> = {
+    1: "Water Tank",
+    2: "Sewage Tank",
+  };
 
-    // Get all readings for this sensor
+  // Convert sensor readings to waste locations format — one card per sensor_number
+  const wasteLocations = sensors.flatMap((sensor) => {
     const sensorReadings = Array.from(latestReadings.values()).filter(
       (r) => r.sensor_id === sensor.id,
     );
 
-    if (sensorReadings.length > 0) {
-      // Average the fill levels from all sensors
-      const avgFillLevel =
-        sensorReadings.reduce((sum, r) => sum + r.fill_level, 0) /
-        sensorReadings.length;
-      fillLevel = Math.round(avgFillLevel);
+    if (sensorReadings.length === 0) {
+      return [
+        {
+          id: sensor.id,
+          name: sensor.location_name,
+          fillLevel: 0,
+          status: "optimal" as const,
+          lastUpdated: "No data",
+          location: sensor.device_id,
+          sensorNumber: 0,
+        },
+      ];
+    }
 
-      // Determine status
-      if (fillLevel >= 85) {
+    return sensorReadings.map((reading) => {
+      let status: "optimal" | "warning" | "critical" = "optimal";
+      if (reading.fill_level >= 85) {
         status = "critical";
-      } else if (fillLevel >= 60) {
+      } else if (reading.fill_level >= 60) {
         status = "warning";
       }
 
-      // Format last updated time
-      const lastReadingTime = new Date(sensorReadings[0].created_at);
+      const lastReadingTime = new Date(reading.created_at);
       const now = new Date();
       const diffMs = now.getTime() - lastReadingTime.getTime();
       const diffMins = Math.floor(diffMs / 60000);
-
+      let lastUpdated = "No data";
       if (diffMins < 1) {
         lastUpdated = "Just now";
       } else if (diffMins < 60) {
@@ -101,16 +108,25 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       } else {
         lastUpdated = lastReadingTime.toLocaleTimeString();
       }
-    }
 
-    return {
-      id: sensor.id,
-      name: sensor.location_name,
-      fillLevel,
-      status,
-      lastUpdated,
-      location: sensor.device_id,
-    };
+      const label =
+        sensorNumberLabels[reading.sensor_number] ??
+        `Sensor ${reading.sensor_number}`;
+      const name =
+        sensorReadings.length > 1
+          ? `${sensor.location_name} – ${label}`
+          : sensor.location_name;
+
+      return {
+        id: `${sensor.id}-${reading.sensor_number}`,
+        name,
+        fillLevel: reading.fill_level,
+        status,
+        lastUpdated,
+        location: sensor.device_id,
+        sensorNumber: reading.sensor_number,
+      };
+    });
   });
 
   // Convert alerts to notifications

@@ -5,12 +5,14 @@ Your dashboard now has **real-time updates**! New sensor readings and alerts wil
 ## ✅ What Changed
 
 ### 1. **Dashboard Hook** (`useSensorData.ts`)
+
 - Added proper Realtime subscriptions for `sensor_readings` table
 - Added subscriptions for `alerts` table (INSERT and UPDATE events)
 - Subscriptions are **filtered by your user's sensors only** (more efficient)
 - Added console logging to track updates
 
-### 2. **ESP32 Firmware** 
+### 2. **ESP32 Firmware**
+
 - Added `Authorization: Bearer public-testing` header to bypass Supabase platform auth check
 
 ## 🚀 How It Works Now
@@ -36,12 +38,12 @@ Go to **Supabase Dashboard → SQL Editor** and run:
 
 ```sql
 -- Check RLS status for sensor_readings
-SELECT tablename FROM pg_tables 
-WHERE schemaname = 'public' 
+SELECT tablename FROM pg_tables
+WHERE schemaname = 'public'
 AND tablename = 'sensor_readings';
 
 -- View RLS policies
-SELECT * FROM pg_policies 
+SELECT * FROM pg_policies
 WHERE tablename = 'sensor_readings';
 ```
 
@@ -128,11 +130,11 @@ Once real-time is working:
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| Console shows `FAILED` or `PAUSED` | RLS policies are blocking Realtime |
-| Subscriptions don't show up | Realtime not enabled on table in Supabase |
-| Data shows after refresh but not real-time | Run the RLS policy SQL from Step 2 |
-| Still 401 error on ESP32 | Ensure Authorization header is added in firmware |
+| Issue                                      | Solution                                         |
+| ------------------------------------------ | ------------------------------------------------ |
+| Console shows `FAILED` or `PAUSED`         | RLS policies are blocking Realtime               |
+| Subscriptions don't show up                | Realtime not enabled on table in Supabase        |
+| Data shows after refresh but not real-time | Run the RLS policy SQL from Step 2               |
+| Still 401 error on ESP32                   | Ensure Authorization header is added in firmware |
 
 If issues persist, check [Supabase Realtime Docs](https://supabase.com/docs/guides/realtime)

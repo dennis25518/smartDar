@@ -7,6 +7,61 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
+// Function to send WhatsApp message via Twilio
+async function sendWhatsAppMessage(
+  phoneNumber: string,
+  message: string,
+): Promise<boolean> {
+  try {
+    const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+    const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+    const whatsappFrom = Deno.env.get("TWILIO_WHATSAPP_NUMBER");
+
+    if (!accountSid || !authToken || !whatsappFrom) {
+      console.error("Missing Twilio configuration");
+      return false;
+    }
+
+    // Ensure phone number is in E.164 format with whatsapp: prefix
+    const toPhone = phoneNumber.startsWith("whatsapp:")
+      ? phoneNumber
+      : `whatsapp:${phoneNumber}`;
+    const fromPhone = `whatsapp:${whatsappFrom}`;
+
+    // Create Basic Auth header for Twilio
+    const credentials = btoa(`${accountSid}:${authToken}`);
+
+    const response = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${credentials}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          From: fromPhone,
+          To: toPhone,
+          Body: message,
+        }).toString(),
+      },
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Twilio API error:", errorData);
+      return false;
+    }
+
+    const data = await response.json();
+    console.log("WhatsApp message sent successfully. SID:", data.sid);
+    return true;
+  } catch (error) {
+    console.error("Error sending WhatsApp message:", error);
+    return false;
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -118,7 +173,7 @@ serve(async (req) => {
               ? `Sensor ${reading.sensor_id}: Critical level reached (${fillLevel}%)`
               : `Sensor ${reading.sensor_id}: Warning level reached (${fillLevel}%)`;
 
-          await supabase.from("alerts").insert([
+          const { error: alertError } = await supabase.from("alerts").insert([
             {
               sensor_id: sensorRecord.id,
               device_id,
@@ -129,6 +184,45 @@ serve(async (req) => {
               created_at: new Date().toISOString(),
             },
           ]);
+
+          if (alertError) {
+            console.error("Error creating alert:", alertError);
+          } else {
+            // Fetch user's phone number for WhatsApp notification
+            const { data: userProfile, error: profileError } = await supabase
+              .from("users_profile")
+              .select("phone")
+              .eq("user_id", sensorRecord.user_id)
+              .single();
+
+            if (profileError) {
+              console.error("Error fetching user profile:", profileError);
+            } else if (userProfile?.phone) {
+              // Send WhatsApp message
+              const whatsappMessage =
+                alertType === "critical"
+                  ? `🚨 CRITICAL ALERT: Device ${device_id}, Sensor ${reading.sensor_id} is now ${fillLevel}% FULL! Please empty the bin immediately.`
+                  : `⚠️ WARNING: Device ${device_id}, Sensor ${reading.sensor_id} has reached ${fillLevel}% capacity. Please monitor or empty soon.`;
+
+              const sent = await sendWhatsAppMessage(
+                userProfile.phone,
+                whatsappMessage,
+              );
+
+              if (sent) {
+                console.log(
+                  `WhatsApp alert sent to ${userProfile.phone} for sensor ${reading.sensor_id}`,
+                );
+              } else {
+                console.warn(`Failed to send WhatsApp to ${userProfile.phone}`);
+              }
+            } else {
+              console.log(
+                "User profile not found or phone number not set for user:",
+                sensorRecord.user_id,
+              );
+            }
+          }
         }
       }
     }
