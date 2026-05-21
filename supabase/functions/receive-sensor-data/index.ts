@@ -4,65 +4,112 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-// Function to send WhatsApp message via Twilio
-async function sendWhatsAppMessage(
-  phoneNumber: string,
-  message: string,
+// Device Name Mappings
+const DEVICE_NAMES: Record<string, string> = {
+  esp32_household_1: "KariaKoo Residency",
+  // Add more device mappings here as needed
+};
+
+// Sensor Component Mappings
+const SENSOR_NAMES: Record<number, string> = {
+  1: "Septic Tank",
+  2: "Waste Bin",
+  // Add more sensor mappings here as needed
+};
+
+// Email Rate Limiting (in milliseconds) - 2 minutes for testing
+const EMAIL_RATE_LIMIT_MS = 2 * 60 * 1000; // 2 minutes
+
+// Helper function to get device readable name
+function getDeviceName(deviceId: string): string {
+  return DEVICE_NAMES[deviceId] || deviceId;
+}
+
+// Helper function to get sensor readable name
+function getSensorName(sensorId: number): string {
+  return SENSOR_NAMES[sensorId] || `Sensor ${sensorId}`;
+}
+
+function normalizeEmail(email: string): string | null {
+  const trimmed = email.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.toLowerCase();
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailPattern.test(normalized) ? normalized : null;
+}
+
+async function sendResendEmail(
+  recipientEmail: string,
+  subject: string,
+  body: string,
 ): Promise<boolean> {
   try {
-    const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-    const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const whatsappFrom = Deno.env.get("TWILIO_WHATSAPP_NUMBER");
+    console.log(`[EMAIL] Starting email send to: ${recipientEmail}`);
 
-    if (!accountSid || !authToken || !whatsappFrom) {
-      console.error("Missing Twilio configuration");
+    const apiKey = Deno.env.get("RESEND_API_KEY");
+    if (!apiKey) {
+      console.error(
+        "[EMAIL] CRITICAL: Missing Resend API key - email not sent",
+      );
       return false;
     }
 
-    // Ensure phone number is in E.164 format with whatsapp: prefix
-    const toPhone = phoneNumber.startsWith("whatsapp:")
-      ? phoneNumber
-      : `whatsapp:${phoneNumber}`;
-    const fromPhone = `whatsapp:${whatsappFrom}`;
+    console.log("[EMAIL] API key found, proceeding with send");
 
-    // Create Basic Auth header for Twilio
-    const credentials = btoa(`${accountSid}:${authToken}`);
+    // Using Resend sandbox testing domain for free tier
+    const fromEmail = "SmartDar Alerts <onboarding@resend.dev>";
 
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${credentials}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          From: fromPhone,
-          To: toPhone,
-          Body: message,
-        }).toString(),
+    const emailPayload = {
+      from: fromEmail,
+      to: recipientEmail,
+      subject,
+      html: body,
+    };
+
+    console.log("[EMAIL] Payload prepared:", JSON.stringify(emailPayload));
+
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(emailPayload),
+    });
+
+    console.log(`[EMAIL] Resend API response status: ${response.status}`);
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error("Twilio API error:", errorData);
+      console.error(
+        "[EMAIL] Resend API error response:",
+        JSON.stringify(errorData),
+      );
+      console.error(`[EMAIL] Failed to send to ${recipientEmail}`);
       return false;
     }
 
     const data = await response.json();
-    console.log("WhatsApp message sent successfully. SID:", data.sid);
+    console.log(
+      `[EMAIL] SUCCESS - Email sent. Response:`,
+      JSON.stringify(data),
+    );
     return true;
   } catch (error) {
-    console.error("Error sending WhatsApp message:", error);
+    console.error("[EMAIL] Exception caught:", error);
     return false;
   }
 }
 
 serve(async (req) => {
+  console.log(
+    `[receive-sensor-data] ${req.method} request received at ${new Date().toISOString()}`,
+  );
+  console.log(`[receive-sensor-data] Headers:`, req.headers);
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -94,9 +141,13 @@ serve(async (req) => {
     const body = await req.json();
     const { device_id, sensors: sensorData } = body;
 
-    console.log(`Received data from device: ${device_id}`);
+    console.log(`[REQUEST] Received data from device: ${device_id}`);
+    console.log(`[REQUEST] Sensor data received:`, JSON.stringify(sensorData));
 
     if (!device_id || !sensorData || !Array.isArray(sensorData)) {
+      console.error(
+        `[REQUEST] Invalid payload - device_id: ${device_id}, sensorData is array: ${Array.isArray(sensorData)}`,
+      );
       return new Response(JSON.stringify({ error: "Invalid payload format" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -108,10 +159,17 @@ serve(async (req) => {
       .from("sensors")
       .select("id, user_id")
       .eq("device_id", device_id)
-      .single();
+      .maybeSingle();
+
+    console.log(
+      `[SENSOR] Query error: ${sensorError ? JSON.stringify(sensorError) : "NONE"}`,
+    );
+    console.log(
+      `[SENSOR] Sensor found: ${sensorRecord ? "YES" : "NO"}${sensorRecord ? `, ID: ${sensorRecord.id}, User ID: ${sensorRecord.user_id}` : ""}`,
+    );
 
     if (sensorError || !sensorRecord) {
-      console.error("Sensor not found:", device_id);
+      console.error("[SENSOR] Sensor not found for device:", device_id);
       return new Response(
         JSON.stringify({ error: "Device not registered", device_id }),
         {
@@ -131,23 +189,32 @@ serve(async (req) => {
       created_at: new Date().toISOString(),
     }));
 
+    console.log(
+      `[READINGS] Preparing to insert ${readings.length} readings:`,
+      JSON.stringify(readings),
+    );
+
     const { error: insertError } = await supabase
       .from("sensor_readings")
       .insert(readings);
 
     if (insertError) {
-      console.error("Insert error:", insertError);
+      console.error("[READINGS] Insert error:", insertError);
       throw insertError;
     }
 
     console.log(
-      `Successfully inserted ${readings.length} readings for device ${device_id}`,
+      `[READINGS] Successfully inserted ${readings.length} readings for device ${device_id}`,
     );
 
     // Check for threshold breaches and create alerts
     for (const reading of sensorData) {
       const fillLevel = reading.fill_level;
       let alertType = null;
+
+      console.log(
+        `[ALERT] Processing sensor ${reading.sensor_id} with fill level: ${fillLevel}%`,
+      );
 
       if (fillLevel >= 85) {
         alertType = "critical";
@@ -156,18 +223,29 @@ serve(async (req) => {
       }
 
       if (alertType) {
-        // Check if there's already an unresolved alert for this sensor
-        const { data: existingAlert } = await supabase
-          .from("alerts")
-          .select("id")
-          .eq("sensor_id", sensorRecord.id)
-          .eq("sensor_number", reading.sensor_id)
-          .eq("alert_type", alertType)
-          .eq("resolved", false)
-          .single();
+        console.log(`[ALERT] Alert type triggered: ${alertType}`);
 
-        // Only create new alert if one doesn't already exist
+        // Check if there's already an unresolved alert for this sensor
+        const { data: existingAlert, error: existingAlertError } =
+          await supabase
+            .from("alerts")
+            .select("id")
+            .eq("sensor_id", sensorRecord.id)
+            .eq("sensor_number", reading.sensor_id)
+            .eq("alert_type", alertType)
+            .eq("resolved", false)
+            .maybeSingle();
+
+        console.log(
+          `[ALERT] Existing alert check - Error: ${existingAlertError ? "YES" : "NO"}, Alert found: ${existingAlert ? "YES" : "NO"}`,
+        );
+
+        // Create a new alert record only when no unresolved alert exists, but always send notification
         if (!existingAlert) {
+          console.log(
+            `[ALERT] No existing unresolved alert found, creating new one`,
+          );
+
           const message =
             alertType === "critical"
               ? `Sensor ${reading.sensor_id}: Critical level reached (${fillLevel}%)`
@@ -186,63 +264,178 @@ serve(async (req) => {
           ]);
 
           if (alertError) {
-            console.error("Error creating alert:", alertError);
+            console.error(
+              "[ALERT] Error creating alert in database:",
+              alertError,
+            );
           } else {
-            // Fetch user's phone number for WhatsApp notification
-            let phoneNumber: string | null = null;
+            console.log(`[ALERT] Alert created successfully in database`);
+          }
+        } else {
+          console.log(
+            `[ALERT] Existing unresolved alert found, skipping duplicate alert insert`,
+          );
+        }
 
-            // First try to get the sensor owner's phone from users_profile
-            const { data: userProfile, error: profileError } = await supabase
-              .from("users_profile")
-              .select("phone")
-              .eq("user_id", sensorRecord.user_id)
-              .single();
+        // Fetch user's email for notification and send on every threshold hit
+        let recipientEmail: string | null = null;
 
-            if (userProfile?.phone) {
-              phoneNumber = userProfile.phone;
-            } else if (profileError && profileError.code !== "PGRST116") {
-              console.error("Error fetching user profile:", profileError);
-            }
+        console.log(
+          `[EMAIL] Looking up email for user_id: ${sensorRecord.user_id}`,
+        );
 
-            // If user phone not found, try to get admin's phone from admin_profiles_table
-            if (!phoneNumber) {
-              const { data: adminProfile } = await supabase
-                .from("admin_profiles_table")
-                .select("phone")
-                .not("phone", "is", null)
-                .limit(1)
-                .single();
+        // First try to get the sensor owner's email from users_profile
+        const { data: userProfile, error: userProfileError } = await supabase
+          .from("users_profile")
+          .select("email")
+          .eq("user_id", sensorRecord.user_id)
+          .maybeSingle();
 
-              if (adminProfile?.phone) {
-                phoneNumber = adminProfile.phone;
-              }
-            }
+        console.log(
+          `[EMAIL] User profile query - Error: ${userProfileError ? JSON.stringify(userProfileError) : "NONE"}`,
+        );
+        console.log(
+          `[EMAIL] User profile found: ${userProfile ? "YES" : "NO"}${userProfile?.email ? `, Email: ${userProfile.email}` : ""}`,
+        );
 
-            // Send WhatsApp message if phone number is available
-            if (phoneNumber) {
-              const whatsappMessage =
-                alertType === "critical"
-                  ? `🚨 CRITICAL ALERT: Device ${device_id}, Sensor ${reading.sensor_id} is now ${fillLevel}% FULL! Please empty the bin immediately.`
-                  : `⚠️ WARNING: Device ${device_id}, Sensor ${reading.sensor_id} has reached ${fillLevel}% capacity. Please monitor or empty soon.`;
+        if (userProfile?.email) {
+          recipientEmail = normalizeEmail(userProfile.email);
+          console.log(`[EMAIL] Normalized user email: ${recipientEmail}`);
+        }
 
-              const sent = await sendWhatsAppMessage(
-                phoneNumber,
-                whatsappMessage,
-              );
+        // If user email not found, try to get admin's email from admin_profiles_table
+        if (!recipientEmail) {
+          console.log(
+            `[EMAIL] User email not found, checking admin_profiles_table`,
+          );
 
-              if (sent) {
-                console.log(
-                  `WhatsApp alert sent to ${phoneNumber} for sensor ${reading.sensor_id}`,
-                );
-              } else {
-                console.warn(`Failed to send WhatsApp to ${phoneNumber}`);
-              }
-            } else {
+          const { data: adminProfile, error: adminProfileError } =
+            await supabase
+              .from("admin_profiles_table")
+              .select("email")
+              .not("email", "is", null)
+              .limit(1)
+              .maybeSingle();
+
+          console.log(
+            `[EMAIL] Admin profile query - Error: ${adminProfileError ? JSON.stringify(adminProfileError) : "NONE"}`,
+          );
+          console.log(
+            `[EMAIL] Admin profile found: ${adminProfile ? "YES" : "NO"}${adminProfile?.email ? `, Email: ${adminProfile.email}` : ""}`,
+          );
+
+          if (adminProfile?.email) {
+            recipientEmail = normalizeEmail(adminProfile.email);
+            console.log(`[EMAIL] Normalized admin email: ${recipientEmail}`);
+          }
+        }
+
+        if (recipientEmail) {
+          console.log(`[EMAIL] Proceeding to send email to: ${recipientEmail}`);
+
+          // Check rate limiting - only send email if 2 minutes have passed since last email for this sensor
+          const { data: lastAlert, error: lastAlertError } = await supabase
+            .from("alerts")
+            .select("created_at")
+            .eq("sensor_id", sensorRecord.id)
+            .eq("sensor_number", reading.sensor_id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const now = new Date();
+          let shouldSendEmail = true;
+
+          if (lastAlert && lastAlert.created_at) {
+            const lastAlertTime = new Date(lastAlert.created_at).getTime();
+            const timeSinceLastAlert = now.getTime() - lastAlertTime;
+
+            console.log(
+              `[EMAIL] Rate limit check - Last alert: ${lastAlert.created_at}, Time since: ${timeSinceLastAlert}ms, Rate limit: ${EMAIL_RATE_LIMIT_MS}ms`,
+            );
+
+            if (timeSinceLastAlert < EMAIL_RATE_LIMIT_MS) {
+              shouldSendEmail = false;
               console.log(
-                "No phone number found for user or admin. WhatsApp alert not sent.",
+                `[EMAIL] Rate limit active - Email skipped. Next email can be sent in ${Math.ceil((EMAIL_RATE_LIMIT_MS - timeSinceLastAlert) / 1000)} seconds`,
               );
             }
           }
+
+          if (shouldSendEmail) {
+            const deviceName = getDeviceName(device_id);
+            const sensorName = getSensorName(reading.sensor_id);
+            const alertLevel =
+              alertType === "critical" ? "Critical" : "Warning";
+
+            const subject =
+              alertType === "critical"
+                ? `🚨 CRITICAL ALERT: ${sensorName} - ${deviceName}`
+                : `⚠️ WARNING: ${sensorName} - ${deviceName}`;
+
+            const messageBody =
+              alertType === "critical"
+                ? `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <h2 style="color: #d32f2f;">Automated System Notification</h2>
+                    <p><strong>CRITICAL ALERT:</strong> Please be advised that ${sensorName} (Sensor ${reading.sensor_id}) on device <strong>${deviceName}</strong> has reached <strong>${fillLevel}% capacity</strong>.</p>
+                    
+                    <h3 style="color: #d32f2f;">Status Details:</h3>
+                    <ul style="background-color: #f5f5f5; padding: 15px 15px 15px 30px; border-left: 4px solid #d32f2f;">
+                      <li><strong>Location:</strong> ${deviceName}</li>
+                      <li><strong>Device ID:</strong> ${device_id}</li>
+                      <li><strong>Sensor Component:</strong> ${sensorName} (Sensor ${reading.sensor_id})</li>
+                      <li><strong>Current Load:</strong> ${fillLevel}%</li>
+                      <li><strong>Alert Level:</strong> <span style="color: #d32f2f; font-weight: bold;">${alertLevel}</span></li>
+                    </ul>
+                    
+                    <h3 style="color: #d32f2f;">Recommended Action:</h3>
+                    <p><strong>URGENT:</strong> Please empty the ${sensorName} immediately to prevent overflow and ensure continuous operations.</p>
+                    
+                    <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+                    <p style="font-size: 12px; color: #999;">This is an automated operational alert from your household monitoring network (smartDar). Please do not reply directly to this email.</p>
+                  </div>`
+                : `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <h2 style="color: #ff9800;">Automated System Notification</h2>
+                    <p><strong>Please be advised</strong> that ${sensorName} (Sensor ${reading.sensor_id}) on device <strong>${deviceName}</strong> has reached <strong>${fillLevel}% capacity</strong>.</p>
+                    
+                    <h3 style="color: #ff9800;">Status Details:</h3>
+                    <ul style="background-color: #f5f5f5; padding: 15px 15px 15px 30px; border-left: 4px solid #ff9800;">
+                      <li><strong>Location:</strong> ${deviceName}</li>
+                      <li><strong>Device ID:</strong> ${device_id}</li>
+                      <li><strong>Sensor Component:</strong> ${sensorName} (Sensor ${reading.sensor_id})</li>
+                      <li><strong>Current Load:</strong> ${fillLevel}%</li>
+                      <li><strong>Alert Level:</strong> <span style="color: #ff9800; font-weight: bold;">${alertLevel}</span></li>
+                    </ul>
+                    
+                    <h3 style="color: #ff9800;">Recommended Action:</h3>
+                    <p>Kindly monitor this device or arrange to empty it soon to ensure continuous operations and prevent any potential overflow.</p>
+                    
+                    <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+                    <p style="font-size: 12px; color: #999;">This is an automated operational alert from your household monitoring network (smartDar). Please do not reply directly to this email.</p>
+                  </div>`;
+
+            const sent = await sendResendEmail(
+              recipientEmail,
+              subject,
+              messageBody,
+            );
+
+            if (sent) {
+              console.log(
+                `[EMAIL] Email successfully sent to ${recipientEmail} for sensor ${reading.sensor_id}`,
+              );
+            } else {
+              console.warn(`[EMAIL] Failed to send email to ${recipientEmail}`);
+            }
+          } else {
+            console.log(
+              `[EMAIL] Email rate limit in effect - notification skipped for sensor ${reading.sensor_id}`,
+            );
+          }
+        } else {
+          console.log(
+            "[EMAIL] No email address found for user or admin. Notification not sent.",
+          );
         }
       }
     }
@@ -251,7 +444,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         message: "Data received and processed",
-        readings_count: sensorData.length,
+        readings_count: readings.length,
       }),
       {
         status: 200,
@@ -262,6 +455,7 @@ serve(async (req) => {
     console.error("Error:", error);
     return new Response(
       JSON.stringify({
+        success: false,
         error: error instanceof Error ? error.message : "Unknown error",
       }),
       {

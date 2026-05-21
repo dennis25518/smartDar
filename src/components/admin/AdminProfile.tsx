@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { User, Mail, Phone, Briefcase, MapPin, Save, X } from "lucide-react";
+import {
+  User,
+  Mail,
+  Phone,
+  Briefcase,
+  MapPin,
+  Save,
+  X,
+  Clock4,
+} from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 
 export default function AdminProfile() {
@@ -87,6 +96,14 @@ export default function AdminProfile() {
       setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-gray-600 text-lg">Loading profile...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

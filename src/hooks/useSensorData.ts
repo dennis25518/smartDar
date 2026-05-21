@@ -77,7 +77,7 @@ export const useSensorData = (): UseSensorDataReturn => {
 
         if (sensorsError) throw sensorsError;
         setSensors(sensorsData || []);
-        sensorIds = (sensorsData || []).map((s) => s.id);
+        sensorIds = (sensorsData || []).map((s) => String(s.id));
 
         // Fetch latest readings
         if (sensorsData && sensorsData.length > 0) {

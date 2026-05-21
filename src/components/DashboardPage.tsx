@@ -1,11 +1,22 @@
 import { useState, useEffect } from "react";
-import { useSensorData } from "../hooks/useSensorData";
+import { useSensorData, type Alert } from "../hooks/useSensorData";
 import { useUserProfile } from "../hooks/useUserProfile";
 import { supabase } from "../lib/supabaseClient";
 import ProfileSettings from "./ProfileSettings";
 
 interface DashboardPageProps {
   onLogout: () => void;
+}
+
+interface WasteLocation {
+  id: string;
+  name: string;
+  fillLevel: number;
+  status: "critical" | "warning" | "optimal";
+  lastUpdated: string;
+  location: string;
+  sensorNumber: number;
+  activeAlert: Alert | null;
 }
 
 interface Notification {
@@ -15,6 +26,18 @@ interface Notification {
   timestamp: string;
   type: "info" | "warning" | "success";
   read: boolean;
+}
+
+interface SupportTicket {
+  id: string;
+  ticket_number: string;
+  subject: string;
+  category: string;
+  message: string;
+  response_message?: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
 }
 
 type TabType = "overview" | "notification" | "status" | "profile" | "support";
@@ -50,6 +73,8 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     category: "general",
     message: "",
   });
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [supportChatMessage, setSupportChatMessage] = useState("");
 
   // Update support form when profile loads
   useEffect(() => {
@@ -62,82 +87,117 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   }, [profile, currentUser.name, currentUser.email]);
 
+  useEffect(() => {
+    const loadSupportTickets = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data, error } = await supabase
+          .from<SupportTicket>("support_tickets")
+          .select(
+            "id, ticket_number, subject, category, message, response_message, status, created_at, updated_at",
+          )
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("Error loading support tickets:", error);
+          return;
+        }
+
+        setSupportTickets(data ?? []);
+      } catch (err) {
+        console.error("Support ticket load error:", err);
+      }
+    };
+
+    loadSupportTickets();
+  }, []);
+
   // Labels for each sensor_number
   const sensorNumberLabels: Record<number, string> = {
-    1: "Water Tank",
-    2: "Sewage Tank",
+    1: "Septic Tank",
+    2: "Waste Bin",
   };
 
   // Convert sensor readings to waste locations format — one card per sensor_number
-  const wasteLocations = sensors.flatMap((sensor) => {
-    const sensorReadings = Array.from(latestReadings.values()).filter(
-      (r) => r.sensor_id === sensor.id,
-    );
-
-    if (sensorReadings.length === 0) {
-      return [
-        {
-          id: sensor.id,
-          name: sensor.location_name,
-          fillLevel: 0,
-          status: "optimal" as const,
-          lastUpdated: "No data",
-          location: sensor.device_id,
-          sensorNumber: 0,
-          activeAlert: null,
-        },
-      ];
-    }
-
-    return sensorReadings.map((reading) => {
-      let status: "optimal" | "warning" | "critical" = "optimal";
-      if (reading.fill_level >= 85) {
-        status = "critical";
-      } else if (reading.fill_level >= 60) {
-        status = "warning";
-      }
-
-      // Find active alert for this sensor
-      const activeAlert = alerts.find(
-        (a) =>
-          a.sensor_number === reading.sensor_number &&
-          a.sensor_id === sensor.id &&
-          !a.resolved,
+  const wasteLocations: WasteLocation[] = sensors
+    .flatMap((sensor) => {
+      const sensorReadings = Array.from(latestReadings.values()).filter(
+        (r) =>
+          String(r.sensor_id) === String(sensor.id) ||
+          r.device_id === sensor.device_id,
       );
 
-      const lastReadingTime = new Date(reading.created_at);
-      const now = new Date();
-      const diffMs = now.getTime() - lastReadingTime.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      let lastUpdated = "No data";
-      if (diffMins < 1) {
-        lastUpdated = "Just now";
-      } else if (diffMins < 60) {
-        lastUpdated = `${diffMins} min${diffMins > 1 ? "s" : ""} ago`;
-      } else {
-        lastUpdated = lastReadingTime.toLocaleTimeString();
+      if (sensorReadings.length === 0) {
+        return [
+          {
+            id: sensor.id,
+            name: sensor.location_name,
+            fillLevel: 0,
+            status: "optimal" as const,
+            lastUpdated: "No data",
+            location: sensor.device_id,
+            sensorNumber: 0,
+            activeAlert: null,
+          },
+        ];
       }
 
-      const label =
-        sensorNumberLabels[reading.sensor_number] ??
-        `Sensor ${reading.sensor_number}`;
-      const name =
-        sensorReadings.length > 1
-          ? `${sensor.location_name} – ${label}`
-          : sensor.location_name;
+      return sensorReadings.map((reading) => {
+        let status: "optimal" | "warning" | "critical" = "optimal";
+        if (reading.fill_level >= 85) {
+          status = "critical";
+        } else if (reading.fill_level >= 60) {
+          status = "warning";
+        }
 
-      return {
-        id: `${sensor.id}-${reading.sensor_number}`,
-        name,
-        fillLevel: reading.fill_level,
-        status,
-        lastUpdated,
-        location: sensor.device_id,
-        sensorNumber: reading.sensor_number,
-        activeAlert,
-      };
-    });
-  });
+        // Find active alert for this sensor
+        const activeAlert =
+          alerts.find(
+            (a) =>
+              a.sensor_number === reading.sensor_number &&
+              a.sensor_id === sensor.id &&
+              !a.resolved,
+          ) ?? null;
+
+        const lastReadingTime = new Date(reading.created_at);
+        const now = new Date();
+        const diffMs = now.getTime() - lastReadingTime.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        let lastUpdated = "No data";
+        if (diffMins < 1) {
+          lastUpdated = "Just now";
+        } else if (diffMins < 60) {
+          lastUpdated = `${diffMins} min${diffMins > 1 ? "s" : ""} ago`;
+        } else {
+          lastUpdated = lastReadingTime.toLocaleTimeString();
+        }
+
+        const label =
+          sensorNumberLabels[reading.sensor_number] ??
+          `Sensor ${reading.sensor_number}`;
+        const name =
+          sensorReadings.length > 1
+            ? `${sensor.location_name} – ${label}`
+            : sensor.location_name;
+
+        return {
+          id: `${sensor.id}-${reading.sensor_number}`,
+          name,
+          fillLevel: reading.fill_level,
+          status,
+          lastUpdated,
+          location: sensor.device_id,
+          sensorNumber: reading.sensor_number,
+          activeAlert,
+        };
+      });
+    })
+    .sort((a, b) => b.sensorNumber - a.sensorNumber);
 
   // Convert alerts to notifications
   const notifications: Notification[] = alerts.map((alert) => ({
@@ -154,6 +214,10 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [dispatchReason, setDispatchReason] = useState("");
+  const [reportLocation, setReportLocation] = useState<WasteLocation | null>(
+    null,
+  );
+  const [showCallPopup, setShowCallPopup] = useState(false);
 
   function formatTimestamp(date: Date): string {
     const now = new Date();
@@ -199,11 +263,13 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
   const handleDispatchRequest = () => {
     if (selectedLocation && dispatchReason) {
-      alert(
-        `Dispatch request sent for ${selectedLocation}\nReason: ${dispatchReason}`,
-      );
+      // close dispatch modal
       setSelectedLocation(null);
       setDispatchReason("");
+      // show call animation popup
+      setShowCallPopup(true);
+      // auto-close after 6 seconds (3 loops at ~2s each)
+      setTimeout(() => setShowCallPopup(false), 6000);
     }
   };
 
@@ -247,6 +313,20 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         category: "general",
         message: "",
       });
+      setSupportTickets((prev) => [
+        {
+          id: "",
+          ticket_number: "",
+          subject: supportForm.subject,
+          category: supportForm.category,
+          message: supportForm.message,
+          response_message: null,
+          status: "open",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
     } catch (err) {
       setSupportError(
         err instanceof Error ? err.message : "Failed to submit support ticket",
@@ -414,7 +494,6 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             </button>
           ))}
         </nav>
-
         {/* Logout Button */}
         <div className="p-3 border-t border-green-600">
           <button
@@ -768,7 +847,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                             className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition"
                           >
                             <div className="p-6">
-                            <div className="flex items-start justify-between mb-4">
+                              <div className="flex items-start justify-between mb-4">
                                 <div className="flex-1">
                                   <h3 className="text-xl font-bold text-gray-900">
                                     {location.name}
@@ -841,7 +920,10 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                                 >
                                   Request Dispatch
                                 </button>
-                                <button className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium transition text-sm">
+                                <button
+                                  onClick={() => setReportLocation(location)}
+                                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium transition text-sm"
+                                >
                                   View Details
                                 </button>
                               </div>
@@ -1090,7 +1172,10 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                           </p>
                         </div>
 
-                        <button className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2 rounded-lg transition">
+                        <button
+                          onClick={() => setReportLocation(location)}
+                          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2 rounded-lg transition"
+                        >
                           View Full Report
                         </button>
                       </div>
@@ -1132,47 +1217,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                   </p>
                 </div>
 
-                {supportSubmitted ? (
-                  <div className="bg-green-50 border border-green-200 rounded-2xl p-8 text-center">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-green-200 rounded-full mb-4">
-                      <svg
-                        className="w-8 h-8 text-green-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    </div>
-                    <h3 className="text-2xl font-bold text-green-900 mb-2">
-                      Message Sent Successfully!
-                    </h3>
-                    <p className="text-green-800 mb-6">
-                      Thank you for contacting us. Our support team will respond
-                      within 24 hours.
-                    </p>
-                    <button
-                      onClick={() => {
-                        setSupportSubmitted(false);
-                        setSupportForm({
-                          name: currentUser.name,
-                          email: currentUser.email,
-                          subject: "",
-                          category: "general",
-                          message: "",
-                        });
-                      }}
-                      className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold transition"
-                    >
-                      Send Another Message
-                    </button>
-                  </div>
-                ) : (
+                {supportTickets.length === 0 ? (
                   <div className="bg-white rounded-2xl shadow-lg p-8">
                     <div className="space-y-5">
                       <div className="grid grid-cols-2 gap-4">
@@ -1302,6 +1347,135 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                       </button>
                     </div>
                   </div>
+                ) : (
+                  <div className="bg-white rounded-2xl shadow-lg p-8">
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-2xl font-bold text-gray-900">
+                            Support Conversation
+                          </h3>
+                          <p className="text-gray-600 mt-1">
+                            Continue the conversation with our support team.
+                          </p>
+                        </div>
+                        <span className="text-sm font-semibold text-green-700 bg-green-100 px-3 py-1 rounded-full">
+                          {supportTickets[0].status.toUpperCase()}
+                        </span>
+                      </div>
+
+                      <div className="space-y-4 max-h-[460px] overflow-y-auto pr-2">
+                        {supportTickets.map((ticket) => (
+                          <div
+                            key={ticket.id || ticket.created_at}
+                            className="space-y-3"
+                          >
+                            <div className="rounded-2xl bg-green-50 p-4">
+                              <p className="text-xs text-gray-500">
+                                {new Date(ticket.created_at).toLocaleString()}
+                              </p>
+                              <p className="font-semibold text-gray-900 mt-2">
+                                {ticket.subject}
+                              </p>
+                              <p className="text-gray-700 mt-2">
+                                {ticket.message}
+                              </p>
+                            </div>
+
+                            {ticket.response_message && (
+                              <div className="rounded-2xl bg-gray-100 p-4 border border-gray-200">
+                                <p className="text-xs text-gray-500">
+                                  Support reply
+                                </p>
+                                <p className="text-gray-800 mt-2">
+                                  {ticket.response_message}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-4">
+                        <label className="block text-sm font-bold text-gray-700">
+                          Send a follow-up message
+                        </label>
+                        <textarea
+                          value={supportChatMessage}
+                          onChange={(e) =>
+                            setSupportChatMessage(e.target.value)
+                          }
+                          rows={4}
+                          placeholder="Type your follow-up message here..."
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                        />
+                        <button
+                          onClick={async () => {
+                            if (!supportChatMessage.trim()) return;
+                            setSupportLoading(true);
+                            setSupportError(null);
+                            try {
+                              const {
+                                data: { user },
+                              } = await supabase.auth.getUser();
+                              if (!user)
+                                throw new Error("User not authenticated");
+
+                              const { error } = await supabase
+                                .from("support_tickets")
+                                .insert([
+                                  {
+                                    user_id: user.id,
+                                    name: currentUser.name,
+                                    email: currentUser.email,
+                                    subject: `Follow-up: ${supportTickets[0].subject}`,
+                                    category: supportTickets[0].category,
+                                    message: supportChatMessage.trim(),
+                                    status: "open",
+                                  },
+                                ]);
+                              if (error) throw error;
+                              setSupportTickets((prev) => [
+                                {
+                                  id: "",
+                                  ticket_number: "",
+                                  subject: `Follow-up: ${supportTickets[0].subject}`,
+                                  category: supportTickets[0].category,
+                                  message: supportChatMessage.trim(),
+                                  response_message: null,
+                                  status: "open",
+                                  created_at: new Date().toISOString(),
+                                  updated_at: new Date().toISOString(),
+                                },
+                                ...prev,
+                              ]);
+                              setSupportChatMessage("");
+                            } catch (err) {
+                              setSupportError(
+                                err instanceof Error
+                                  ? err.message
+                                  : "Failed to send follow-up message",
+                              );
+                            } finally {
+                              setSupportLoading(false);
+                            }
+                          }}
+                          disabled={supportLoading}
+                          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-green-400 disabled:to-emerald-400 text-white font-bold py-3 rounded-lg transition"
+                        >
+                          {supportLoading ? "Sending..." : "Send Follow-up"}
+                        </button>
+                        {supportError && (
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                            <p className="text-red-700 font-semibold">Error:</p>
+                            <p className="text-red-600 text-sm mt-1">
+                              {supportError}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
@@ -1407,6 +1581,103 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {reportLocation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-gray-900">
+                Device Report
+              </h3>
+              <button
+                onClick={() => setReportLocation(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-600">Sensor</p>
+                <p className="text-lg font-semibold text-gray-900">
+                  {reportLocation.name}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div className="bg-gray-50 p-4 rounded-xl">
+                  <p className="text-xs text-gray-500">Fill Level</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {reportLocation.fillLevel}%
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-xl">
+                  <p className="text-xs text-gray-500">Status</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {reportLocation.status.toUpperCase()}
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-xl">
+                  <p className="text-xs text-gray-500">Device</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {reportLocation.location}
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-xl">
+                  <p className="text-xs text-gray-500">Last Updated</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {reportLocation.lastUpdated}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setReportLocation(null)}
+                  className="px-5 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Call Animation Popup for Dispatch */}
+      {showCallPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 flex flex-col items-center gap-4">
+            <lottie-player
+              src={encodeURI("/Animation/call Animation.json")}
+              background="transparent"
+              speed="1"
+              loop={3}
+              style={{ width: "160px", height: "160px" }}
+              autoplay
+            ></lottie-player>
+            <h3 className="text-lg font-bold text-gray-900">
+              Dispatch Requested
+            </h3>
+            <p className="text-sm text-gray-600 text-center">
+              Your dispatch request has been sent. A team will contact you
+              shortly.
+            </p>
           </div>
         </div>
       )}

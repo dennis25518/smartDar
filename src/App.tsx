@@ -24,6 +24,13 @@ export default function App() {
   // Check authentication status on app load
   useEffect(() => {
     const checkAuth = async () => {
+      // Check if admin is logged in (stored in localStorage)
+      const adminLoggedIn = localStorage.getItem("adminLoggedIn") === "true";
+      if (adminLoggedIn) {
+        setCurrentPage("admin");
+        return;
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -47,6 +54,7 @@ export default function App() {
         setCurrentPage("dashboard");
       } else if (event === "SIGNED_OUT") {
         setCurrentPage("landing");
+        localStorage.removeItem("adminLoggedIn");
       }
     });
 
@@ -57,6 +65,8 @@ export default function App() {
 
   // Handle logout
   const handleLogout = async () => {
+    // Clear admin login flag
+    localStorage.removeItem("adminLoggedIn");
     await supabase.auth.signOut();
     setCurrentPage("landing");
   };

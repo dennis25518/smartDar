@@ -180,7 +180,7 @@ void sendToSupabase(String payload)
 
     // Add headers
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
+    // Note: Function uses service role key internally, no auth header needed from device
 
     // Send POST request
     int httpCode = http.POST(payload);

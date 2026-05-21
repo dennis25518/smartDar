@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 // PUBLIC VERSION - FOR TESTING ONLY
@@ -84,28 +84,50 @@ serve(async (req) => {
     // Check for alerts
     for (const reading of sensorData) {
       const fillLevel = reading.fill_level;
-      if (fillLevel >= 85 || fillLevel >= 60) {
-        const alertType = fillLevel >= 85 ? "critical" : "warning";
+      let alertType: string | null = null;
 
+      if (fillLevel >= 85) {
+        alertType = "critical";
+      } else if (fillLevel >= 60) {
+        alertType = "warning";
+      }
+
+      if (alertType) {
+        // Check if alert already exists
         const { data: existing } = await supabase
           .from("alerts")
           .select("id")
           .eq("sensor_id", sensor.id)
+          .eq("sensor_number", reading.sensor_id)
           .eq("alert_type", alertType)
           .eq("resolved", false)
           .single();
 
         if (!existing) {
-          await supabase.from("alerts").insert([
+          const alertMessage =
+            alertType === "critical"
+              ? `🚨 CRITICAL: Sensor ${reading.sensor_id} at ${fillLevel}% - IMMEDIATE ACTION NEEDED`
+              : `⚠️ WARNING: Sensor ${reading.sensor_id} at ${fillLevel}% - Monitor closely`;
+
+          const { error: alertError } = await supabase.from("alerts").insert([
             {
               sensor_id: sensor.id,
               device_id,
               sensor_number: reading.sensor_id,
               alert_type: alertType,
               fill_level_trigger: fillLevel,
-              message: `${alertType.toUpperCase()}: ${fillLevel}% full`,
+              message: alertMessage,
+              created_at: new Date().toISOString(),
             },
           ]);
+
+          if (alertError) {
+            console.error("Alert creation error:", alertError);
+          } else {
+            console.log(
+              `Alert created: ${alertType} for sensor ${reading.sensor_id}`,
+            );
+          }
         }
       }
     }

@@ -131,7 +131,7 @@ void sendData(long distance, int fill_level)
 
     http.begin(SERVER_URL);
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("Authorization", "Bearer public-testing");
+    // Function handles auth internally with service role key
 
     // Create JSON payload
     StaticJsonDocument<256> doc;
