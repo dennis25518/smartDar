@@ -365,7 +365,8 @@ serve(async (req) => {
           if (shouldSendEmail) {
             const deviceName = getDeviceName(device_id);
             const sensorName = getSensorName(reading.sensor_id);
-            const locationName = sensorRecord.location_name || "Main Residential Unit (Zone 1)";
+            const locationName =
+              sensorRecord.location_name || "Main Residential Unit (Zone 1)";
 
             const subject = `IoT Monitoring Network | Automated Status Alert - ${sensorName} at ${fillLevel}%`;
 
