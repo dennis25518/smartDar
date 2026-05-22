@@ -96,7 +96,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         if (!user) return;
 
         const { data, error } = await supabase
-          .from<SupportTicket>("support_tickets")
+          .from("support_tickets")
           .select(
             "id, ticket_number, subject, category, message, response_message, status, created_at, updated_at",
           )
@@ -231,7 +231,6 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     const diffDays = Math.floor(diffHours / 24);
     return `${diffDays}d ago`;
   }
-  const [supportSubmitted, setSupportSubmitted] = useState(false);
   const [supportLoading, setSupportLoading] = useState(false);
   const [supportError, setSupportError] = useState<string | null>(null);
 
@@ -305,7 +304,6 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
       if (error) throw error;
 
-      setSupportSubmitted(true);
       setSupportForm({
         name: currentUser.name,
         email: currentUser.email,
