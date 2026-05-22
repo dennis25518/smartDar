@@ -120,7 +120,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   // Labels for each sensor_number
   const sensorNumberLabels: Record<number, string> = {
     1: "Septic Tank",
-    2: "Waste Bin",
+    2: "Wastebin",
   };
 
   // Convert sensor readings to waste locations format — one card per sensor_number
@@ -197,7 +197,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         };
       });
     })
-    .sort((a, b) => b.sensorNumber - a.sensorNumber);
+    .sort((a, b) => a.sensorNumber - b.sensorNumber);
 
   // Convert alerts to notifications
   const notifications: Notification[] = alerts.map((alert) => ({

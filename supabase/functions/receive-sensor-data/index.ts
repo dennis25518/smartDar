@@ -157,7 +157,7 @@ serve(async (req) => {
     // Find sensor by device_id
     const { data: sensorRecord, error: sensorError } = await supabase
       .from("sensors")
-      .select("id, user_id")
+      .select("id, user_id, location_name")
       .eq("device_id", device_id)
       .maybeSingle();
 
@@ -365,53 +365,31 @@ serve(async (req) => {
           if (shouldSendEmail) {
             const deviceName = getDeviceName(device_id);
             const sensorName = getSensorName(reading.sensor_id);
-            const alertLevel =
-              alertType === "critical" ? "Critical" : "Warning";
+            const locationName = sensorRecord.location_name || "Main Residential Unit (Zone 1)";
 
-            const subject =
-              alertType === "critical"
-                ? `🚨 CRITICAL ALERT: ${sensorName} - ${deviceName}`
-                : `⚠️ WARNING: ${sensorName} - ${deviceName}`;
+            const subject = `IoT Monitoring Network | Automated Status Alert - ${sensorName} at ${fillLevel}%`;
 
-            const messageBody =
-              alertType === "critical"
-                ? `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                    <h2 style="color: #d32f2f;">Automated System Notification</h2>
-                    <p><strong>CRITICAL ALERT:</strong> Please be advised that ${sensorName} (Sensor ${reading.sensor_id}) on device <strong>${deviceName}</strong> has reached <strong>${fillLevel}% capacity</strong>.</p>
+            const messageBody = `<div style="font-family: Arial, sans-serif; line-height: 1.8; color: #333; max-width: 600px;">
+                    <h2 style="color: #2c3e50; border-bottom: 3px solid #27ae60; padding-bottom: 10px; margin-bottom: 20px;">IoT Monitoring Network | Automated Status Alert</h2>
                     
-                    <h3 style="color: #d32f2f;">Status Details:</h3>
-                    <ul style="background-color: #f5f5f5; padding: 15px 15px 15px 30px; border-left: 4px solid #d32f2f;">
-                      <li><strong>Location:</strong> ${deviceName}</li>
-                      <li><strong>Device ID:</strong> ${device_id}</li>
-                      <li><strong>Sensor Component:</strong> ${sensorName} (Sensor ${reading.sensor_id})</li>
-                      <li><strong>Current Load:</strong> ${fillLevel}%</li>
-                      <li><strong>Alert Level:</strong> <span style="color: #d32f2f; font-weight: bold;">${alertLevel}</span></li>
+                    <p style="font-size: 16px; margin-bottom: 20px;">Please be advised that the <strong>${sensorName}</strong> on device <strong>${device_id}</strong> has reached <strong>${fillLevel}% capacity</strong>.</p>
+                    
+                    <h3 style="color: #2c3e50; margin-top: 25px; margin-bottom: 12px; border-left: 4px solid #27ae60; padding-left: 12px;">System Diagnostics:</h3>
+                    <ul style="background-color: #ecf0f1; padding: 15px 15px 15px 30px; border-left: 4px solid #27ae60; margin: 0;">
+                      <li style="margin-bottom: 8px;"><strong>Asset Name:</strong> ${sensorName}</li>
+                      <li style="margin-bottom: 8px;"><strong>Hardware ID:</strong> ${device_id}</li>
+                      <li style="margin-bottom: 8px;"><strong>Current Capacity:</strong> ${fillLevel}%</li>
+                      <li><strong>Location:</strong> ${locationName}</li>
                     </ul>
                     
-                    <h3 style="color: #d32f2f;">Recommended Action:</h3>
-                    <p><strong>URGENT:</strong> Please empty the ${sensorName} immediately to prevent overflow and ensure continuous operations.</p>
+                    <h3 style="color: #2c3e50; margin-top: 25px; margin-bottom: 12px; border-left: 4px solid #27ae60; padding-left: 12px;">Required Action Items:</h3>
+                    <ol style="padding-left: 20px;">
+                      <li style="margin-bottom: 12px;"><strong>Schedule Maintenance:</strong> Coordinate a service technician to schedule an emptying appointment within the next 48 hours.</li>
+                      <li><strong>Monitor Telemetry:</strong> Observe hourly data spikes to ensure fill rates do not experience sudden acceleration.</li>
+                    </ol>
                     
-                    <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-                    <p style="font-size: 12px; color: #999;">This is an automated operational alert from your household monitoring network (smartDar). Please do not reply directly to this email.</p>
-                  </div>`
-                : `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                    <h2 style="color: #ff9800;">Automated System Notification</h2>
-                    <p><strong>Please be advised</strong> that ${sensorName} (Sensor ${reading.sensor_id}) on device <strong>${deviceName}</strong> has reached <strong>${fillLevel}% capacity</strong>.</p>
-                    
-                    <h3 style="color: #ff9800;">Status Details:</h3>
-                    <ul style="background-color: #f5f5f5; padding: 15px 15px 15px 30px; border-left: 4px solid #ff9800;">
-                      <li><strong>Location:</strong> ${deviceName}</li>
-                      <li><strong>Device ID:</strong> ${device_id}</li>
-                      <li><strong>Sensor Component:</strong> ${sensorName} (Sensor ${reading.sensor_id})</li>
-                      <li><strong>Current Load:</strong> ${fillLevel}%</li>
-                      <li><strong>Alert Level:</strong> <span style="color: #ff9800; font-weight: bold;">${alertLevel}</span></li>
-                    </ul>
-                    
-                    <h3 style="color: #ff9800;">Recommended Action:</h3>
-                    <p>Kindly monitor this device or arrange to empty it soon to ensure continuous operations and prevent any potential overflow.</p>
-                    
-                    <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-                    <p style="font-size: 12px; color: #999;">This is an automated operational alert from your household monitoring network (smartDar). Please do not reply directly to this email.</p>
+                    <hr style="border: none; border-top: 2px solid #ecf0f1; margin: 30px 0;">
+                    <p style="font-size: 12px; color: #7f8c8d; font-style: italic;"><strong>Confidentiality Notice:</strong> This automated operational report is intended solely for system administrators. Please do not reply directly to this message.</p>
                   </div>`;
 
             const sent = await sendResendEmail(

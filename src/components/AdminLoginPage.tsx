@@ -88,18 +88,13 @@ export default function AdminLoginPage({
           <div className="w-full space-y-8">
             {/* Header */}
             <div className="mb-8">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="inline-flex items-center justify-center w-12 h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-full">
-                  <span className="text-xl font-bold text-white">👨‍💼</span>
-                </div>
-                <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">
-                    Admin Portal
-                  </h1>
-                  <p className="text-gray-600 text-sm">
-                    SmartDar Municipal Dashboard
-                  </p>
-                </div>
+              <div className="mb-4">
+                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">
+                  Admin Portal
+                </h1>
+                <p className="text-gray-600 text-sm">
+                  SmartDar Municipal Dashboard
+                </p>
               </div>
             </div>
 
@@ -223,15 +218,6 @@ export default function AdminLoginPage({
                     )}
                   </button>
                 </div>
-              </div>
-
-              {/* Info Box */}
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-blue-800 text-xs leading-relaxed">
-                  <span className="font-semibold">🔒 Admin Access Only:</span>{" "}
-                  This portal is restricted to authorized municipal
-                  administrators. Unauthorized access attempts are logged.
-                </p>
               </div>
 
               {/* Submit Button */}
