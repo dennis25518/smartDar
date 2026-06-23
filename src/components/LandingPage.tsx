@@ -3,11 +3,13 @@ import { useState } from "react";
 interface LandingPageProps {
   onGetStarted: () => void;
   onAdminLogin: () => void;
+  onContractorLogin: () => void;
 }
 
 export default function LandingPage({
   onGetStarted,
   onAdminLogin,
+  onContractorLogin,
 }: LandingPageProps) {
   const [isHovering, setIsHovering] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -741,12 +743,21 @@ export default function LandingPage({
             <p className="text-gray-600 text-xs sm:text-sm">
               &copy; 2026 smartDar. All rights reserved.
             </p>
-            <button
-              onClick={onAdminLogin}
-              className="text-xs text-gray-500  hover:text-green-600 transition font-medium underline"
-            >
-              Admin Portal
-            </button>
+            <div className="flex gap-4">
+              <button
+                onClick={onAdminLogin}
+                className="text-xs text-gray-500 hover:text-green-600 transition font-medium underline"
+              >
+                Admin Portal
+              </button>
+              <span className="text-gray-300 text-xs">|</span>
+              <button
+                onClick={onContractorLogin}
+                className="text-xs text-gray-500 hover:text-green-600 transition font-medium underline"
+              >
+                Contractor Portal
+              </button>
+            </div>
           </div>
           <div className="flex flex-col items-center gap-4">
             <p className="text-gray-600 text-xs sm:text-sm font-semibold">

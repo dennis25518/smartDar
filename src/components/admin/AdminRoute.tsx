@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+ import { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import {
@@ -31,6 +31,7 @@ export default function AdminRoute({ sensors }: AdminRouteProps) {
   );
   const [sortBy, setSortBy] = useState("name");
   const [zoomLevel, setZoomLevel] = useState(10);
+  const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -38,6 +39,24 @@ export default function AdminRoute({ sensors }: AdminRouteProps) {
 
   const sensorsWithCoords = useMemo(() => {
     return sensors.map((sensor, index) => {
+      // Check if it's the specific test devices to assign Chuo cha Maji coordinates
+      if (sensor.device_id === "esp32_household_3") {
+        return {
+          ...sensor,
+          location_name: "Chuo cha Maji Dispensary",
+          lat: -6.78615,
+          lng: 39.20465,
+        };
+      }
+      if (sensor.device_id === "esp32_household_1") {
+        return {
+          ...sensor,
+          location_name: "Chuo cha maji ubungo",
+          lat: -6.78772,
+          lng: 39.20605,
+        };
+      }
+
       const angle = (index / Math.max(sensors.length, 1)) * Math.PI * 2;
       const radius = 0.05 + ((sensor.fill_level || 0) / 100) * 0.03;
       return {
@@ -68,6 +87,27 @@ export default function AdminRoute({ sensors }: AdminRouteProps) {
   );
 
   const routeLine = useMemo(() => {
+    const validSensors = sensorsWithCoords.filter(
+      (s) => s.lng !== undefined && s.lat !== undefined
+    );
+    // If we have our simulated route sensors, draw a road-following route
+    const hasDispensary = validSensors.some(s => s.device_id === "esp32_household_3");
+    const hasCampus = validSensors.some(s => s.device_id === "esp32_household_1");
+
+    if (hasDispensary && hasCampus) {
+      const sDispensary = validSensors.find(s => s.device_id === "esp32_household_3")!;
+      const sCampus = validSensors.find(s => s.device_id === "esp32_household_1")!;
+
+      // Return a road-following coordinate set between Dispensary and Ubungo Campus
+      return [
+        [sDispensary.lng!, sDispensary.lat!],
+        [39.20590, -6.78570],
+        [39.20680, -6.78540],
+        [39.20710, -6.78740],
+        [sCampus.lng!, sCampus.lat!]
+      ];
+    }
+
     const ordered = [...sensorsWithCoords].sort(
       (a, b) => (a.sensor_number ?? 0) - (b.sensor_number ?? 0),
     );
@@ -102,6 +142,10 @@ export default function AdminRoute({ sensors }: AdminRouteProps) {
 
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
+    map.on("load", () => {
+      setMapLoaded(true);
+    });
+
     map.on("move", () => {
       setZoomLevel(Number(map.getZoom().toFixed(1)));
     });
@@ -111,116 +155,112 @@ export default function AdminRoute({ sensors }: AdminRouteProps) {
     return () => {
       map.remove();
       mapRef.current = null;
+      setMapLoaded(false);
     };
-  }, [sensorsWithCoords, zoomLevel]);
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !mapLoaded) return;
 
-    // Wait for map style to load before adding sources/layers
-    const handleMapLoad = () => {
-      markerRefs.current.forEach((marker) => marker.remove());
-      markerRefs.current = [];
+    // Clear existing markers
+    markerRefs.current.forEach((marker) => marker.remove());
+    markerRefs.current = [];
 
-      // Add markers for all sensors
-      sensorsWithCoords.forEach((sensor) => {
-        if (sensor.lng === undefined || sensor.lat === undefined) return;
+    // Add markers for all sensors
+    sensorsWithCoords.forEach((sensor) => {
+      if (sensor.lng === undefined || sensor.lat === undefined) return;
 
-        const markerEl = document.createElement("div");
-        markerEl.className = "blinking-marker";
-        markerEl.style.backgroundColor = getMarkerColor(sensor.fill_level || 0);
-        markerEl.style.width = "18px";
-        markerEl.style.height = "18px";
-        markerEl.style.borderRadius = "50%";
-        markerEl.style.boxShadow = "0 0 0 4px rgba(255,255,255,0.75)";
-        markerEl.style.cursor = "pointer";
-        markerEl.style.zIndex = "1000";
-        markerEl.title = sensor.location_name;
-        markerEl.addEventListener("click", () => setSelectedSensor(sensor));
+      const markerEl = document.createElement("div");
+      markerEl.className = "blinking-marker";
+      markerEl.style.backgroundColor = getMarkerColor(sensor.fill_level || 0);
+      markerEl.style.width = "18px";
+      markerEl.style.height = "18px";
+      markerEl.style.borderRadius = "50%";
+      markerEl.style.boxShadow = "0 0 0 4px rgba(255,255,255,0.75)";
+      markerEl.style.cursor = "pointer";
+      markerEl.style.zIndex = "1000";
+      markerEl.title = sensor.location_name;
+      markerEl.addEventListener("click", () => setSelectedSensor(sensor));
 
-        const marker = new mapboxgl.Marker(markerEl)
-          .setLngLat([sensor.lng, sensor.lat])
-          .addTo(map);
+      const marker = new mapboxgl.Marker(markerEl)
+        .setLngLat([sensor.lng, sensor.lat])
+        .addTo(map);
 
-        markerRefs.current.push(marker);
-      });
+      markerRefs.current.push(marker);
+    });
 
-      // Add route line if we have multiple sensors
-      if (routeLine.length > 1) {
-        if (map.getSource("optimized-route")) {
-          (map.getSource("optimized-route") as mapboxgl.GeoJSONSource).setData({
+    // Add route line if we have multiple sensors
+    if (routeLine.length > 1) {
+      if (map.getSource("optimized-route")) {
+        (map.getSource("optimized-route") as mapboxgl.GeoJSONSource).setData({
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "LineString",
+            coordinates: routeLine,
+          },
+        });
+      } else {
+        map.addSource("optimized-route", {
+          type: "geojson",
+          data: {
             type: "Feature",
             properties: {},
             geometry: {
               type: "LineString",
               coordinates: routeLine,
             },
-          });
-        } else {
-          map.addSource("optimized-route", {
-            type: "geojson",
-            data: {
-              type: "Feature",
-              properties: {},
-              geometry: {
-                type: "LineString",
-                coordinates: routeLine,
-              },
-            },
-          });
+          },
+        });
 
-          map.addLayer({
-            id: "optimized-route-line",
-            type: "line",
-            source: "optimized-route",
-            layout: {
-              "line-join": "round",
-              "line-cap": "round",
-            },
-            paint: {
-              "line-color": "#10b981",
-              "line-width": 4,
-              "line-opacity": 0.85,
-            },
-          });
-        }
+        map.addLayer({
+          id: "optimized-route-line",
+          type: "line",
+          source: "optimized-route",
+          layout: {
+            "line-join": "round",
+            "line-cap": "round",
+          },
+          paint: {
+            "line-color": "#10b981",
+            "line-width": 4,
+            "line-opacity": 0.85,
+          },
+        });
       }
-
-      // Fit map bounds around sensors
-      if (sensorsWithCoords.length > 0) {
-        const validSensors = sensorsWithCoords.filter(
-          (s) => s.lng !== undefined && s.lat !== undefined,
-        );
-
-        if (validSensors.length === 1) {
-          // Center map on single sensor
-          map.flyTo({
-            center: [validSensors[0].lng!, validSensors[0].lat!],
-            zoom: 13,
-            duration: 1000,
-          });
-        } else if (validSensors.length > 1) {
-          // Fit bounds around multiple sensors
-          const bounds = new mapboxgl.LngLatBounds();
-          validSensors.forEach((sensor) => {
-            bounds.extend([sensor.lng!, sensor.lat!]);
-          });
-          map.fitBounds(bounds, { padding: 80, maxZoom: 13, duration: 1000 });
-        }
-      }
-    };
-
-    // Check if map is already loaded or wait for load event
-    if (map.isStyleLoaded()) {
-      handleMapLoad();
     } else {
-      map.on("load", handleMapLoad);
-      return () => {
-        map.off("load", handleMapLoad);
-      };
+      if (map.getLayer("optimized-route-line")) {
+        map.removeLayer("optimized-route-line");
+      }
+      if (map.getSource("optimized-route")) {
+        map.removeSource("optimized-route");
+      }
     }
-  }, [sensorsWithCoords, routeLine]);
+
+    // Fit map bounds around sensors
+    if (sensorsWithCoords.length > 0) {
+      const validSensors = sensorsWithCoords.filter(
+        (s) => s.lng !== undefined && s.lat !== undefined,
+      );
+
+      if (validSensors.length === 1) {
+        // Center map on single sensor
+        map.flyTo({
+          center: [validSensors[0].lng!, validSensors[0].lat!],
+          zoom: 13,
+          duration: 1000,
+        });
+      } else if (validSensors.length > 1) {
+        // Fit bounds around multiple sensors
+        const bounds = new mapboxgl.LngLatBounds();
+        validSensors.forEach((sensor) => {
+          bounds.extend([sensor.lng!, sensor.lat!]);
+        });
+        map.fitBounds(bounds, { padding: 80, maxZoom: 18, duration: 1000 });
+      }
+    }
+  }, [mapLoaded, sensorsWithCoords, routeLine]);
 
   const applyZoom = (value: number) => {
     const map = mapRef.current;

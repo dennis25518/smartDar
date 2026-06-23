@@ -33,6 +33,22 @@ function getSensorName(sensorId: number): string {
   return SENSOR_NAMES[sensorId] || `Sensor ${sensorId}`;
 }
 
+// Helper function to calculate estimated days left until fully loaded
+function calculateEstimatedDaysLeft(sensorId: number, fillLevel: number): string {
+  const level = Math.max(0, Math.min(100, fillLevel));
+  if (level >= 100) return "0 days (fully loaded)";
+  
+  if (sensorId === 2) {
+    // Septic Tank - fills slower (e.g., at 85% capacity, approx. 8 days left)
+    const days = Math.max(1, Math.round((100 - level) * 0.5));
+    return `${days} ${days === 1 ? "day" : "days"}`;
+  } else {
+    // Waste Bin (default) - fills faster (e.g., at 82% capacity, approx. 4 days left)
+    const days = Math.max(1, Math.round((100 - level) * 0.2));
+    return `${days} ${days === 1 ? "day" : "days"}`;
+  }
+}
+
 function normalizeEmail(email: string): string | null {
   const trimmed = email.trim();
   if (!trimmed) return null;
@@ -373,18 +389,19 @@ serve(async (req) => {
             const locationName =
               sensorRecord.location_name || "Main Residential Unit (Zone 1)";
 
-            const subject = `IoT Monitoring Network | Automated Status Alert - ${sensorName} at ${fillLevel}%`;
+            const daysLeftStr = calculateEstimatedDaysLeft(reading.sensor_id, fillLevel);
+            const subject = `IoT Monitoring Network | Automated Status Alert - ${sensorName} (${daysLeftStr} left)`;
 
             const messageBody = `<div style="font-family: Arial, sans-serif; line-height: 1.8; color: #333; max-width: 600px;">
                     <h2 style="color: #2c3e50; border-bottom: 3px solid #27ae60; padding-bottom: 10px; margin-bottom: 20px;">IoT Monitoring Network | Automated Status Alert</h2>
                     
-                    <p style="font-size: 16px; margin-bottom: 20px;">Please be advised that the <strong>${sensorName}</strong> on device <strong>${device_id}</strong> has reached <strong>${fillLevel}% capacity</strong>.</p>
+                    <p style="font-size: 16px; margin-bottom: 20px;">Please be advised that the <strong>${sensorName}</strong> on device <strong>${device_id}</strong> is estimated to be fully loaded in <strong>${daysLeftStr}</strong> (currently at ${fillLevel}% capacity).</p>
                     
                     <h3 style="color: #2c3e50; margin-top: 25px; margin-bottom: 12px; border-left: 4px solid #27ae60; padding-left: 12px;">System Diagnostics:</h3>
                     <ul style="background-color: #ecf0f1; padding: 15px 15px 15px 30px; border-left: 4px solid #27ae60; margin: 0;">
                       <li style="margin-bottom: 8px;"><strong>Asset Name:</strong> ${sensorName}</li>
                       <li style="margin-bottom: 8px;"><strong>Hardware ID:</strong> ${device_id}</li>
-                      <li style="margin-bottom: 8px;"><strong>Current Capacity:</strong> ${fillLevel}%</li>
+                      <li style="margin-bottom: 8px;"><strong>Estimated Time Left:</strong> ${daysLeftStr} (at ${fillLevel}% capacity)</li>
                       <li><strong>Location:</strong> ${locationName}</li>
                     </ul>
                     

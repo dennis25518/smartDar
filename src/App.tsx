@@ -7,6 +7,8 @@ import ForgotPasswordPage from "./components/ForgotPasswordPage";
 import DashboardPage from "./components/DashboardPage";
 import AdminLoginPage from "./components/AdminLoginPage";
 import AdminDashboardPage from "./components/AdminDashboardPage";
+import ContractorLoginPage from "./components/ContractorLoginPage";
+import ContractorDashboardPage from "./components/ContractorDashboardPage";
 
 type PageType =
   | "landing"
@@ -16,6 +18,8 @@ type PageType =
   | "dashboard"
   | "admin-login"
   | "admin"
+  | "contractor-login"
+  | "contractor"
   | "loading";
 
 export default function App() {
@@ -28,6 +32,13 @@ export default function App() {
       const adminLoggedIn = localStorage.getItem("adminLoggedIn") === "true";
       if (adminLoggedIn) {
         setCurrentPage("admin");
+        return;
+      }
+
+      // Check if contractor is logged in (stored in localStorage)
+      const contractorLoggedIn = localStorage.getItem("contractorLoggedIn");
+      if (contractorLoggedIn) {
+        setCurrentPage("contractor");
         return;
       }
 
@@ -55,6 +66,7 @@ export default function App() {
       } else if (event === "SIGNED_OUT") {
         setCurrentPage("landing");
         localStorage.removeItem("adminLoggedIn");
+        localStorage.removeItem("contractorLoggedIn");
       }
     });
 
@@ -65,8 +77,9 @@ export default function App() {
 
   // Handle logout
   const handleLogout = async () => {
-    // Clear admin login flag
+    // Clear login flags
     localStorage.removeItem("adminLoggedIn");
+    localStorage.removeItem("contractorLoggedIn");
     await supabase.auth.signOut();
     setCurrentPage("landing");
   };
@@ -88,6 +101,7 @@ export default function App() {
         <LandingPage
           onGetStarted={() => setCurrentPage("login")}
           onAdminLogin={() => setCurrentPage("admin-login")}
+          onContractorLogin={() => setCurrentPage("contractor-login")}
         />
       )}
       {currentPage === "login" && (
@@ -116,6 +130,15 @@ export default function App() {
       )}
       {currentPage === "admin" && (
         <AdminDashboardPage onLogout={handleLogout} />
+      )}
+      {currentPage === "contractor-login" && (
+        <ContractorLoginPage
+          onBackToLanding={() => setCurrentPage("landing")}
+          onLoginSuccess={() => setCurrentPage("contractor")}
+        />
+      )}
+      {currentPage === "contractor" && (
+        <ContractorDashboardPage onLogout={handleLogout} />
       )}
     </>
   );

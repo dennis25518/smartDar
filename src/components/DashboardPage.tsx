@@ -213,6 +213,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   }));
 
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [dispatchedContractor, setDispatchedContractor] = useState<string | null>(null);
   const [dispatchReason, setDispatchReason] = useState("");
   const [reportLocation, setReportLocation] = useState<WasteLocation | null>(
     null,
@@ -260,19 +261,83 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   };
 
-  const handleDispatchRequest = () => {
+  const assignContractor = (locationNameStr: string): string => {
+    const nameLower = locationNameStr.toLowerCase();
+    if (nameLower.includes("kariakoo") || nameLower.includes("gerezani")) return "Kajenjere";
+    if (nameLower.includes("kisutu") || nameLower.includes("kivukoni")) return "Wejisa";
+    if (nameLower.includes("upanga")) return "Tirima";
+    if (nameLower.includes("maji") || nameLower.includes("ubungo") || nameLower.includes("jangwani") || nameLower.includes("ilala")) return "Sateki";
+    return "Kajenjere"; // Default contractor
+  };
+
+  const saveOrderToLocalStorage = (
+    userId: string,
+    locationNameStr: string,
+    fillLvl: number,
+    sensorTyp: string,
+    contractorName: string,
+    reason: string
+  ) => {
+    const newOrder = {
+      id: Math.random().toString(36).substring(2, 11),
+      customer_id: userId,
+      location_name: locationNameStr,
+      fill_level: fillLvl,
+      sensor_type: sensorTyp,
+      contractor_name: contractorName,
+      status: "pending",
+      dispatch_reason: reason,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const existingOrders = JSON.parse(localStorage.getItem("emptying_orders") || "[]");
+    existingOrders.push(newOrder);
+    localStorage.setItem("emptying_orders", JSON.stringify(existingOrders));
+  };
+
+  const handleDispatchRequest = async () => {
     if (selectedLocation && dispatchReason) {
+      const locationObj = wasteLocations.find(l => l.name === selectedLocation);
+      const fillLvl = locationObj ? locationObj.fillLevel : 85;
+      const sensorTyp = locationObj && locationObj.sensorNumber === 2 ? "Septic Tank" : "Wastebin";
+      const contractorName = assignContractor(selectedLocation);
+
+      setDispatchedContractor(contractorName);
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { error } = await supabase.from("emptying_orders").insert([
+            {
+              customer_id: user.id,
+              location_name: selectedLocation,
+              fill_level: fillLvl,
+              sensor_type: sensorTyp,
+              contractor_name: contractorName,
+              status: "pending",
+              dispatch_reason: dispatchReason,
+            }
+          ]);
+
+          if (error) {
+            console.warn("Supabase insert failed, using localStorage fallback:", error);
+            saveOrderToLocalStorage(user.id, selectedLocation, fillLvl, sensorTyp, contractorName, dispatchReason);
+          }
+        } else {
+          saveOrderToLocalStorage("anonymous", selectedLocation, fillLvl, sensorTyp, contractorName, dispatchReason);
+        }
+      } catch (err) {
+        console.warn("Failed saving order to database, falling back to local storage:", err);
+        saveOrderToLocalStorage("anonymous", selectedLocation, fillLvl, sensorTyp, contractorName, dispatchReason);
+      }
+
       // close dispatch modal
       setSelectedLocation(null);
       setDispatchReason("");
       
-      // Trigger browser dialer to initiate a real phone call to the dispatch center
-      window.location.href = "tel:+255624031107";
-      
       // show call animation popup
       setShowCallPopup(true);
-      // auto-close after 6 seconds (3 loops at ~2s each)
-      setTimeout(() => setShowCallPopup(false), 6000);
     }
   };
 
@@ -1692,7 +1757,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           </div>
         </div>
       )}
-      {/* Call Animation Popup for Dispatch */}
+      {/* Call/Success Animation Popup for Dispatch */}
       {showCallPopup && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 flex flex-col items-center gap-4">
@@ -1705,12 +1770,26 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
               autoplay
             ></lottie-player>
             <h3 className="text-lg font-bold text-gray-900">
-              Dispatch Requested
+              Dispatch Request Sent!
             </h3>
             <p className="text-sm text-gray-600 text-center">
-              Your dispatch request has been sent. A team will contact you
-              shortly.
+              Your request has been successfully routed to contractor <strong>{dispatchedContractor || "Kajenjere"}</strong>.
             </p>
+            <div className="w-full bg-green-50 p-3 rounded-lg border border-green-200 text-center text-xs text-green-800">
+              <strong>Assigned Contractor:</strong> {dispatchedContractor || "Kajenjere"}<br />
+              <strong>Contact:</strong> {
+                dispatchedContractor === "Kajenjere" ? "+255 752 456 789" :
+                dispatchedContractor === "Wejisa" ? "+255 789 123 456" :
+                dispatchedContractor === "Tirima" ? "+255 654 987 321" :
+                "+255 701 234 567"
+              }
+            </div>
+            <button
+              onClick={() => setShowCallPopup(false)}
+              className="mt-2 w-full bg-green-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-green-700 transition"
+            >
+              Okay
+            </button>
           </div>
         </div>
       )}
