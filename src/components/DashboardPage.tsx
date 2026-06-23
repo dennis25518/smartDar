@@ -265,6 +265,10 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       // close dispatch modal
       setSelectedLocation(null);
       setDispatchReason("");
+      
+      // Trigger browser dialer to initiate a real phone call to the dispatch center
+      window.location.href = "tel:+255624031107";
+      
       // show call animation popup
       setShowCallPopup(true);
       // auto-close after 6 seconds (3 loops at ~2s each)
