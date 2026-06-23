@@ -142,17 +142,18 @@ export const useSensorData = (): UseSensorDataReturn => {
             event: "INSERT",
             schema: "public",
             table: "sensor_readings",
-            filter: `sensor_id=in.(${sIds.join(",")})`,
           },
           (payload) => {
             const newReading = payload.new as SensorReading;
-            console.log("📊 New sensor reading:", newReading);
-            setLatestReadings((prev) => {
-              const updated = new Map(prev);
-              const key = `${newReading.sensor_id}-${newReading.sensor_number}`;
-              updated.set(key, newReading);
-              return updated;
-            });
+            if (sIds.includes(String(newReading.sensor_id))) {
+              console.log("📊 New sensor reading:", newReading);
+              setLatestReadings((prev) => {
+                const updated = new Map(prev);
+                const key = `${newReading.sensor_id}-${newReading.sensor_number}`;
+                updated.set(key, newReading);
+                return updated;
+              });
+            }
           },
         )
         .subscribe((status) => {
@@ -169,12 +170,15 @@ export const useSensorData = (): UseSensorDataReturn => {
             event: "INSERT",
             schema: "public",
             table: "alerts",
-            filter: `sensor_id=in.(${sIds.join(",")})`,
           },
           (payload) => {
             const newAlert = payload.new as Alert;
-            console.log("🚨 New alert:", newAlert);
-            setAlerts((prev) => [newAlert, ...prev]);
+            if (sIds.includes(String(newAlert.sensor_id))) {
+              console.log("🚨 New alert:", newAlert);
+              if (!newAlert.resolved) {
+                setAlerts((prev) => [newAlert, ...prev]);
+              }
+            }
           },
         )
         .on(
@@ -183,16 +187,20 @@ export const useSensorData = (): UseSensorDataReturn => {
             event: "UPDATE",
             schema: "public",
             table: "alerts",
-            filter: `sensor_id=in.(${sIds.join(",")})`,
           },
           (payload) => {
             const updatedAlert = payload.new as Alert;
-            console.log("📝 Alert updated:", updatedAlert);
-            setAlerts((prev) =>
-              prev.map((alert) =>
-                alert.id === updatedAlert.id ? updatedAlert : alert,
-              ),
-            );
+            if (sIds.includes(String(updatedAlert.sensor_id))) {
+              console.log("📝 Alert updated:", updatedAlert);
+              setAlerts((prev) => {
+                if (updatedAlert.resolved) {
+                  return prev.filter((alert) => alert.id !== updatedAlert.id);
+                }
+                return prev.map((alert) =>
+                  alert.id === updatedAlert.id ? updatedAlert : alert,
+                );
+              });
+            }
           },
         )
         .subscribe((status) => {

@@ -15,8 +15,8 @@ const DEVICE_NAMES: Record<string, string> = {
 
 // Sensor Component Mappings
 const SENSOR_NAMES: Record<number, string> = {
-  1: "Septic Tank",
-  2: "Waste Bin",
+  1: "Waste Bin",
+  2: "Septic Tank",
   // Add more sensor mappings here as needed
 };
 
@@ -237,13 +237,28 @@ serve(async (req) => {
             .maybeSingle();
 
         console.log(
-          `[ALERT] Existing alert check - Error: ${existingAlertError ? "YES" : "NO"}, Alert found: ${existingAlert ? "YES" : "NO"}`,
+          `[ALERT] Existing alert check - Error: ${existingAlertError ? "YES" : "NO"}, Alert found: ${existingAlert ? "YES" : "NO"}`
+        );
+
+        // Check rate limiting - query the last alert BEFORE inserting the new one,
+        // so we don't accidentally check against the alert we are about to insert.
+        const { data: lastAlert, error: lastAlertError } = await supabase
+          .from("alerts")
+          .select("created_at")
+          .eq("sensor_id", sensorRecord.id)
+          .eq("sensor_number", reading.sensor_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        console.log(
+          `[ALERT] Last alert query - Error: ${lastAlertError ? "YES" : "NO"}, Found: ${lastAlert ? lastAlert.created_at : "NONE"}`
         );
 
         // Create a new alert record only when no unresolved alert exists, but always send notification
         if (!existingAlert) {
           console.log(
-            `[ALERT] No existing unresolved alert found, creating new one`,
+            `[ALERT] No existing unresolved alert found, creating new one`
           );
 
           const message =
@@ -333,16 +348,6 @@ serve(async (req) => {
         if (recipientEmail) {
           console.log(`[EMAIL] Proceeding to send email to: ${recipientEmail}`);
 
-          // Check rate limiting - only send email if 2 minutes have passed since last email for this sensor
-          const { data: lastAlert, error: lastAlertError } = await supabase
-            .from("alerts")
-            .select("created_at")
-            .eq("sensor_id", sensorRecord.id)
-            .eq("sensor_number", reading.sensor_id)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
           const now = new Date();
           let shouldSendEmail = true;
 
@@ -414,6 +419,33 @@ serve(async (req) => {
         } else {
           console.log(
             "[EMAIL] No email address found for user or admin. Notification not sent.",
+          );
+        }
+      } else {
+        // Automatically resolve existing alerts if the level is back to optimal (< 60%)
+        console.log(
+          `[ALERT] Fill level is safe (${fillLevel}%). Resolving open alerts for sensor ${reading.sensor_id}`,
+        );
+        const { data: resolvedAlerts, error: resolveError } = await supabase
+          .from("alerts")
+          .update({
+            resolved: true,
+            resolved_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("sensor_id", sensorRecord.id)
+          .eq("sensor_number", reading.sensor_id)
+          .eq("resolved", false)
+          .select();
+
+        if (resolveError) {
+          console.error(
+            "[ALERT] Error resolving alerts in database:",
+            resolveError,
+          );
+        } else if (resolvedAlerts && resolvedAlerts.length > 0) {
+          console.log(
+            `[ALERT] Automatically resolved ${resolvedAlerts.length} alerts in database`,
           );
         }
       }

@@ -119,8 +119,8 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
   // Labels for each sensor_number
   const sensorNumberLabels: Record<number, string> = {
-    1: "Septic Tank",
-    2: "Wastebin",
+    1: "Wastebin",
+    2: "Septic Tank",
   };
 
   // Convert sensor readings to waste locations format — one card per sensor_number
@@ -332,6 +332,27 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       console.error("Support ticket error:", err);
     } finally {
       setSupportLoading(false);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      const sensorIds = sensors.map((s) => s.id);
+      if (sensorIds.length === 0) return;
+
+      const { error: markError } = await supabase
+        .from("alerts")
+        .update({
+          resolved: true,
+          resolved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .in("sensor_id", sensorIds)
+        .eq("resolved", false);
+
+      if (markError) throw markError;
+    } catch (err) {
+      console.error("Failed to mark alerts as read:", err);
     }
   };
 
@@ -944,9 +965,19 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
                   <h2 className="text-3xl font-bold text-gray-900">
                     Notifications
                   </h2>
-                  <p className="text-gray-600 mt-1">
-                    You have {unreadCount} unread notification
-                    {unreadCount !== 1 ? "s" : ""}
+                  <p className="text-gray-600 mt-1 flex items-center gap-4">
+                    <span>
+                      You have {unreadCount} unread notification
+                      {unreadCount !== 1 ? "s" : ""}
+                    </span>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={handleMarkAllAsRead}
+                        className="text-sm text-green-600 hover:text-green-700 font-semibold underline transition focus:outline-none"
+                      >
+                        Mark all as read
+                      </button>
+                    )}
                   </p>
                 </div>
                 {unreadCount > 0 && (
